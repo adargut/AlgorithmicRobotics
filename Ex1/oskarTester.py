@@ -3,7 +3,6 @@ from oskarSolver import CubeGraph
 # noinspection PyUnresolvedReferences
 from oskarSolver import OskarSolver
 
-
 class OskarTester:
     cubeGraph = CubeGraph()
     oskarSolver = OskarSolver()
@@ -40,12 +39,28 @@ class OskarTester:
 
         def testFindSolution():
             testBuildGraph()
-            print(oskarSolver.cubeGraph.vertices)
-            oskarSolver.findSolution((7, 3, 7), (5, 8, 8))
+            oskarSolver.findSolution((1, 7, 9), (5, 1, 1))
+
+        def testBuildSolution():
+            testFindSolution()
+            sol = oskarSolver.buildSolution((1, 7, 9), (5, 1, 1))
+
+        def testParseSolution():
+            testBuildSolution()
+            sol = oskarSolver.buildSolution((1, 7, 9), (5, 1, 1))
+            sol = oskarSolver.parseSolution(sol)
+            print("got solution")
+            print(sol)
+
+            formatted = oskarSolver.formatSolution(sol)
+            print("formatted output path")
+            print(formatted)
 
         # testFormatInput()
         # testBuildGraph()
-        testFindSolution()
+        # testFindSolution()
+        # testBuildSolution()
+        testParseSolution()
 
     def runTests(self):
         # self.testCube()

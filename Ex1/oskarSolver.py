@@ -1,6 +1,6 @@
 from collections import defaultdict
 from queue import Queue
-
+import argparse
 import numpy as np
 
 
@@ -64,7 +64,7 @@ class OskarSolver:
         def legalVertex(vertex):
             x, y, z = vertex[0], vertex[1], vertex[2]
 
-            if mat1[x][y] == '0' and mat2[y][z] == '0' and mat3[z][x] == '0':
+            if mat1[y][x] == '0' and mat2[z][y] == '0' and mat3[x][z] == '0':
                 return True
             return False
 
@@ -78,7 +78,8 @@ class OskarSolver:
 
         for vertex in self.cubeGraph.vertices.keys():
             x, y, z = vertex[0], vertex[1], vertex[2]
-            neighbors = [(x - 1, y, z), (x, y - 1, z), (x, y, z - 1)]
+            neighbors = [(x - 1, y, z), (x, y - 1, z), (x, y, z - 1),
+                         (x + 1, y, z), (x, y + 1, z), (x, y, z + 1)]
 
             for neighbor in neighbors:
                 if neighbor in self.cubeGraph.vertices:
@@ -87,15 +88,13 @@ class OskarSolver:
 
     def findSolution(self, start, end):
         currNode, vertexQueue = start, Queue()
-        visited, solution = set(), []
+        visited = set()
 
-        vertexQueue.put(currNode)
+        vertexQueue.put(self.cubeGraph.vertices[currNode])
+        visited.add(self.cubeGraph.vertices[currNode])
         while not vertexQueue.empty():
             node = vertexQueue.get()
             neighbors = self.cubeGraph.graph[node]
-
-            print("curr node ", node)
-            print("neighbors are ", neighbors)
 
             for neighbor in neighbors:
                 if neighbor not in visited:
@@ -104,18 +103,17 @@ class OskarSolver:
                     vertexQueue.put(neighbor)
 
                     # Found path to end node
-                    if neighbor == end:
+                    if neighbor == self.cubeGraph.vertices[end]:
                         return end
 
     def buildSolution(self, start, end):
-        solution = [end]
-        currNode = end
+        start, end = self.cubeGraph.vertices[start], self.cubeGraph.vertices[end]
+        solution, currNode = [end], end
 
         # Solution path is built in this logic: [end, father(end), father(father(end)),...,start]
         while currNode != start:
             currNode = self.cubeGraph.getFather(currNode)
             solution.append(currNode)
-            currNode = self.cubeGraph.getFather(currNode)
 
         # Solution path was built in a reverse manner, so we must reverse it
         def reverseSolution():
@@ -126,12 +124,65 @@ class OskarSolver:
                 util_arr.append(node)
             return util_arr
 
-        reverseSolution()
+        solution = reverseSolution()
         return solution
 
-x = Queue()
-x.put(5)
-x.put(4)
-x.get()
-x.get()
-print(x.empty())
+    def parseSolution(self, solution):
+        parsed_solution = []
+
+        def _parseSolution(node):
+            for idx in self.cubeGraph.vertices:
+                if self.cubeGraph.vertices[idx] == node:
+                    return idx
+
+        for val in solution:
+            parsed_solution.append(_parseSolution(val))
+        return parsed_solution
+
+    def parseMove(self, moveFrom, moveTo):
+        x1, y1, z1, = moveFrom[0], moveFrom[1], moveFrom[2]
+        x2, y2, z2 = moveTo[0], moveTo[1], moveTo[2]
+
+        # Moving one unit along the x-axis
+        if x1 != x2:
+            if x1 < x2:
+                return 0
+            return 1
+
+        # Moving one unit along the y-axis
+        if y1 != y2:
+            if y1 < y2:
+                return 2
+            return 3
+
+        # Moving one unit along the z-axis
+        if z1 != z2:
+            if z1 < z2:
+                return 4
+            return 5
+
+    def formatSolution(self, solution):
+        moveFrom = solution[0]
+        moveTo = solution[1]
+        currPos, formatSolution = 1, [self.parseMove(moveFrom=moveFrom, moveTo=moveTo)]
+
+        while currPos < len(solution) - 1:
+            moveFrom = solution[currPos]
+            moveTo = solution[currPos + 1]
+            move = self.parseMove(moveFrom=moveFrom, moveTo=moveTo)
+
+            formatSolution.append(move)
+            currPos += 1
+
+        return formatSolution
+
+
+def main():
+    ap = argparse.ArgumentParser()
+
+
+
+if __name__ == '__main__':
+    main()
+
+
