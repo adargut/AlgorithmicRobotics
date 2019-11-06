@@ -26,7 +26,7 @@ class OskarTester:
         def testFormatInput():
             path = "util/oskar_input.txt"
 
-            res = oskarSolver.formatInput(path)
+            res = oskarSolver.getInput(path)
             print(res[0])
             print(res[1])
             print(res[2])
@@ -34,7 +34,7 @@ class OskarTester:
             return res
 
         def testBuildGraph():
-            matrices = oskarSolver.formatInput("util/oskar_input.txt")
+            matrices = oskarSolver.getInput("util/oskar_input.txt")
             oskarSolver.buildGraph(matrices)
 
         def testFindSolution():

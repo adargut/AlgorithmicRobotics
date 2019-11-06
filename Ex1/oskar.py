@@ -221,6 +221,13 @@ def main():
     solver.buildGraph(matrices=matrices)
     solution = solver.getSolution(start=src, end=dst)
 
+    # Print output in required format
+    for x in src:
+        print(x, "", end="")
+    print()
+    for x in dst:
+        print(x, "", end="")
+    print()
     for scalar in solution:
         print(scalar, "", end="")
 
