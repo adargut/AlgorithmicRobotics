@@ -1,7 +1,6 @@
 from collections import defaultdict
 from queue import Queue
 import argparse
-import numpy as np
 
 
 class CubeGraph:
@@ -33,7 +32,7 @@ class CubeGraph:
 class OskarSolver:
     cubeGraph = CubeGraph()
 
-    def formatInput(self, path):
+    def getInput(self, path):
         mat1, mat2, mat3 = [], [], []
         currMat = mat1
         counter = 0
@@ -176,13 +175,55 @@ class OskarSolver:
 
         return formatSolution
 
+    def getSolution(self, start, end):
+        # Find a solution
+        self.findSolution(start=start, end=end)
+        # Recover solution from Fathers structure
+        solution = self.buildSolution(start=start, end=end)
+        # Parse the solution as a list of moves
+        solution = self.parseSolution(solution=solution)
+        # Format the list of moves as required (0 to positive along x-axis, etc)
+        solution = self.formatSolution(solution=solution)
+
+        return solution
+
+    def solveCube(self, src, dst, filename):
+        # Get matrices from input file
+        matrices = self.getInput(path=filename)
+
+        # Build graph corresponding to obstacles
+        self.buildGraph(matrices=matrices)
+
+        # Get solution for path between the input coordinates
+        solution = self.getSolution(start=src, end=dst)
+
+        return solution
+
 
 def main():
+    # Command line arguments for program
     ap = argparse.ArgumentParser()
-Z
+    ap.add_argument("--sx", default=None, type=int, help="Source x coordinate")
+    ap.add_argument("--sy", default=None, type=int, help="Source y coordinate")
+    ap.add_argument("--sz", default=None, type=int, help="Source z coordinate")
+    ap.add_argument("--dx", default=None, type=int, help="Destination x coordinate")
+    ap.add_argument("--dy", default=None, type=int, help="Source y coordinate")
+    ap.add_argument("--dz", default=None, type=int, help="Source z coordinate")
+    ap.add_argument("--f", default=None, type=str, help="Filename of obstacles description")
+    args = vars(ap.parse_args())
+
+    src = (args["sx"], args["sy"], args["sz"])
+    dst = (args["dx"], args["dy"], args["sz"])
+    filename = args["f"]
+    solver = OskarSolver()
+
+    matrices = solver.getInput(path=filename)
+    solver.buildGraph(matrices=matrices)
+    solution = solver.getSolution(start=src, end=dst)
+
+    for scalar in solution:
+        print(scalar, "", end="")
 
 
 if __name__ == '__main__':
     main()
-
-
