@@ -26,8 +26,7 @@ python oskar.py --sx [src x] --sy [src y]
 And simply replace contents written inside the brackets with desired input.
 For example:
 ```
-python oskar.py --sx 1 --sy 7 --sz 9 --dx 5 
---dy 1 --dz 1 --f util/oskar_input.txt
+python oskar.py --sx 1 --sy 7 --sz 9 --dx 5 --dy 1 --dz 1 --f util/oskar_input.txt
 ```
 And the output we get:
 ```
