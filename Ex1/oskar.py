@@ -41,6 +41,7 @@ class OskarSolver:
             for line in inputFile:
                 if counter == 0:
                     counter += 1
+                    firstLine = line
                     continue
                 if line.isspace():
                     if id(currMat) == id(mat1):
@@ -54,11 +55,12 @@ class OskarSolver:
                             addedLine.append(char)
                     currMat.append(addedLine)
 
-        return [mat1, mat2, mat3]
+        return [firstLine, mat1, mat2, mat3]
 
-    def buildGraph(self, matrices):
-        xDim, yDim, zDim = 11, 11, 11
-        mat1, mat2, mat3 = matrices[0], matrices[1], matrices[2]
+    def buildGraph(self, oskarInput):
+        dims = oskarInput[0]
+        xDim, yDim, zDim = dims[0], dims[1], dims[2]
+        mat1, mat2, mat3 = oskarInput[1], oskarInput[2], oskarInput[3]
 
         def legalVertex(vertex):
             x, y, z = vertex[0], vertex[1], vertex[2]
@@ -207,8 +209,8 @@ def main():
     ap.add_argument("--sy", default=None, type=int, help="Source y coordinate")
     ap.add_argument("--sz", default=None, type=int, help="Source z coordinate")
     ap.add_argument("--dx", default=None, type=int, help="Destination x coordinate")
-    ap.add_argument("--dy", default=None, type=int, help="Source y coordinate")
-    ap.add_argument("--dz", default=None, type=int, help="Source z coordinate")
+    ap.add_argument("--dy", default=None, type=int, help="Destination y coordinate")
+    ap.add_argument("--dz", default=None, type=int, help="Destination z coordinate")
     ap.add_argument("--f", default=None, type=str, help="Filename of obstacles description")
     args = vars(ap.parse_args())
 
@@ -217,7 +219,7 @@ def main():
     filename = args["f"]
     solver = OskarSolver()
 
-    matrices = solver.getInput(path=filename)
+    matrices = solver.getInput(path=filename)[1:3]
     solver.buildGraph(matrices=matrices)
     solution = solver.getSolution(start=src, end=dst)
 
