@@ -1,3 +1,4 @@
+import copy
 from collections import defaultdict
 from queue import Queue
 import argparse
@@ -41,7 +42,7 @@ class OskarSolver:
             for line in inputFile:
                 if counter == 0:
                     counter += 1
-                    firstLine = line
+                    firstLine = copy.deepcopy(line)
                     continue
                 if line.isspace():
                     if id(currMat) == id(mat1):
@@ -58,7 +59,7 @@ class OskarSolver:
         return [firstLine, mat1, mat2, mat3]
 
     def buildGraph(self, oskarInput):
-        dims = oskarInput[0]
+        dims = list(map(int, oskarInput[0].split()))
         xDim, yDim, zDim = dims[0], dims[1], dims[2]
         mat1, mat2, mat3 = oskarInput[1], oskarInput[2], oskarInput[3]
 
@@ -191,11 +192,9 @@ class OskarSolver:
 
     def solveCube(self, src, dst, filename):
         # Get matrices from input file
-        matrices = self.getInput(path=filename)
-
+        oskarInput = self.getInput(path=filename)
         # Build graph corresponding to obstacles
-        self.buildGraph(matrices=matrices)
-
+        self.buildGraph(oskarInput=oskarInput)
         # Get solution for path between the input coordinates
         solution = self.getSolution(start=src, end=dst)
 
@@ -218,10 +217,7 @@ def main():
     dst = (args["dx"], args["dy"], args["sz"])
     filename = args["f"]
     solver = OskarSolver()
-
-    matrices = solver.getInput(path=filename)[1:3]
-    solver.buildGraph(matrices=matrices)
-    solution = solver.getSolution(start=src, end=dst)
+    solution = solver.solveCube(src=src, dst=dst, filename=filename)
 
     # Print output in required format
     for x in src:
