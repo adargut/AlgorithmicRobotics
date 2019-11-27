@@ -22,8 +22,8 @@ def generate_path(path, robot, obstacles, destination):
     # conf_space.insert_polygons(conf_obst)
     conf_space = obstacles_to_arrangement(conf_obst)
     print(conf_space)
-    build_roadmap(conf_space)
-    # vertical_decompose(conf_space)
+    # build_roadmap(conf_space)
+    vertical_decompose(conf_space)
     # print(conf_space)
 
     path.append(Point_2(300, 400))
@@ -119,7 +119,8 @@ def add_vertical_segment(arr, v0, obj):
             seg = Segment_2(v0.point(), p)
             source_half = Segment_2(he.source().point(), p)
             target_half = Segment_2(p, he.target().point())
-            arr.split_edge(he, source_half, target_half)
+            assert isinstance(arr, Arrangement_2)
+            Arrangement_2.split_edge(arr, he, source_half, target_half)
             v1 = he.target()
     else:  # obj is a face
         f = Face()
@@ -145,9 +146,11 @@ def build_roadmap(conf_space: Arrangement_2):
     def face_to_points(face: Face) -> List[Point_2]:
         points = []
 
-        for bounding_he in face.outer_ccb():  # traverse outer components of face
+        # traverse outer components of face
+        for bounding_he in face.outer_ccb():
             assert isinstance(bounding_he, Halfedge)
-            new_point = bounding_he.source()  # append points of bounding half edges
+            # append points of bounding half edges
+            new_point = bounding_he.source()
             assert isinstance(new_point, Vertex)
             points.append(new_point.point())
         return points
@@ -158,6 +161,7 @@ def build_roadmap(conf_space: Arrangement_2):
         face_points = face_to_points(face)
         midpoint_x, midpoint_y = 0, 0
 
+        # average out all points of face
         for point in face_points:
             midpoint_x += point_2_to_xy(point)[0]
             midpoint_y += point_2_to_xy(point)[1]
@@ -169,11 +173,14 @@ def build_roadmap(conf_space: Arrangement_2):
         # we only care about free faces
         if Face.data(face) != "Free":
             pass
+        # use midpoint of face as key to dictionary
         face_midpoint = get_face_midpoint(face)
         roadmap[face_midpoint] = []
 
+        # traverse bounding half-edges of face
         for bounding_he in face.outer_ccb():
             assert isinstance(bounding_he, Halfedge)
+            # go to twin in order to find incident faces to the left
             bounding_twin = bounding_he.twin()
             assert isinstance(bounding_twin, Halfedge)
             incident_face = bounding_twin.face()
@@ -182,5 +189,6 @@ def build_roadmap(conf_space: Arrangement_2):
                 pass
             incident_midpoint = get_face_midpoint(face)
             assert isinstance(incident_midpoint, Point_2)
+            # append midpoint of incident face as neighbor of the midpoint of the current face
             roadmap[face_midpoint].append(incident_midpoint)
     return roadmap
