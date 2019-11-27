@@ -1,4 +1,7 @@
-from arr2_epec_seg_ex import * #Arr_overlay_traits, Arrangement_2, Point_2
+from collections import defaultdict
+from typing import List
+
+from arr2_epec_seg_ex import *  # Arr_overlay_traits, Arrangement_2, Point_2
 from conversions import *
 
 
@@ -15,12 +18,13 @@ def generate_path(path, robot, obstacles, destination):
     # compute minkowski sum
     conf_obst = [minkowski_sum_2(reflect_r, ob).outer_boundary() for ob in obs]
 
-    #conf_space = Polygon_set_2()
-    #conf_space.insert_polygons(conf_obst)
+    # conf_space = Polygon_set_2()
+    # conf_space.insert_polygons(conf_obst)
     conf_space = obstacles_to_arrangement(conf_obst)
     print(conf_space)
-    vertical_decompose(conf_space)
-    print(conf_space)
+    build_roadmap(conf_space)
+    # vertical_decompose(conf_space)
+    # print(conf_space)
 
     path.append(Point_2(300, 400))
     path.append(Point_2(300, 1000))
@@ -38,15 +42,15 @@ def reflect_polygon(polygon):
         reflected.reverse_orientation()
     return reflected
 
-def obstacles_to_arrangement(obstacles):
-  arr = Arrangement_2()
-  lst = []
-  for polygon in obstacles:
-    for e in polygon.edges():
-      lst.append(Curve_2(e))
-  insert(arr, lst)
-  return arr
 
+def obstacles_to_arrangement(obstacles):
+    arr = Arrangement_2()
+    lst = []
+    for polygon in obstacles:
+        for e in polygon.edges():
+            lst.append(Curve_2(e))
+    insert(arr, lst)
+    return arr
 
 
 def arr_overlay(arr1, arr2):
@@ -61,11 +65,12 @@ def arr_overlay(arr1, arr2):
     overlay(arr1, arr2, res, traits)
     return res
 
+
 def vertical_decompose(arr):
     l = []
-    #decomp = Polygon_vertical_decomposition()
+    # decomp = Polygon_vertical_decomposition()
     decompose(arr, l)
-    #decompose(arr, d)
+    # decompose(arr, d)
     prev = None
     for pair in l:
         # pair is a tuple
@@ -82,47 +87,100 @@ def vertical_decompose(arr):
         else:
             is_prev_below_obj_point = False
         if prev is None or not is_prev_below_obj_point or not prev_lower_point == v0.point():
-          add_vertical_segment(arr, v0, below)
+            add_vertical_segment(arr, v0, below)
         add_vertical_segment(arr, v0, upper)
         prev = pair[1]
 
 
 def add_vertical_segment(arr, v0, obj):
-  seg = None
-  v1 = None
-  if obj.is_vertex():
-      v1 = Vertex()
-      obj.get_vertex(v1)
-      seg = Segment_2(v0.point(), v1.point())
-  elif obj.is_halfedge():
-      he = Halfedge()
-      obj.get_halfedge(he)
-      if compare_x(v0.point(), he.target().point()) == EQUAL:
-        # same x coordinate, just connect
-        v1 = he.target.point()
+    seg = None
+    v1 = None
+    if obj.is_vertex():
+        v1 = Vertex()
+        obj.get_vertex(v1)
         seg = Segment_2(v0.point(), v1.point())
-      else:
-        # vertical project v to the segment, split and connect
-        tangent = Line_2(he.source().point(), he.target().point())
-        # project v0 upwards
-        x, y = point_2_to_xy(v0.point())
-        vertical = Line_2(v0.point(), xy_to_point_2(x, y + 1))
-        # intersect
-        res = intersection(tangent, vertical)
-        p = Point_2()
-        res.get_point(p)
-        seg = Segment_2(v0.point(), p)
-        source_half = Segment_2(he.source().point(), p)
-        target_half = Segment_2(p, he.target().point())
-        # TODO: Boost.Python.ArgumentError: Python argument types in
-        #     Arrangement_2.split_edge(Arrangement_2, Halfedge, Segment_2, Segment_2)
-        # did not match C++ signature:
-        #     split_edge(class CGAL::Arrangement_2<class CGAL::Arr_segment_traits_2<class CGAL::Epeck>,class CGAL::Arr_extended_dcel<class CGAL::Arr_segment_traits_2<class CGAL::Epeck>,class boost::python::api::object,class boost::python::api::object,class boost::python::api::object,class CGAL::Arr_vertex_base<class CGAL::Point_2<class CGAL::Epeck> >,class CGAL::Arr_halfedge_base<class CGAL::Arr_segment_2<class CGAL::Epeck> >,class CGAL::Arr_face_base> > {lvalue}, class CGAL::Arrangement_on_surface_2<class CGAL::Arr_segment_traits_2<class CGAL::Epeck>,class CGAL::Arr_bounded_planar_topology_traits_2<class CGAL::Arr_segment_traits_2<class CGAL::Epeck>,class CGAL::Arr_extended_dcel<class CGAL::Arr_segment_traits_2<class CGAL::Epeck>,class boost::python::api::object,class boost::python::api::object,class boost::python::api::object,class CGAL::Arr_vertex_base<class CGAL::Point_2<class CGAL::Epeck> >,class CGAL::Arr_halfedge_base<class CGAL::Arr_segment_2<class CGAL::Epeck> >,class CGAL::Arr_face_base> > >::Halfedge {lvalue}, class CGAL::Arr_segment_2<class CGAL::Epeck> {lvalue}, class CGAL::Arr_segment_2<class CGAL::Epeck> {lvalue})
-        arr.split_edge(he, source_half, target_half)
-        v1 = he.target()
-  else:  # obj is a face
-      f = Face()
-      obj.get_face(f)
-      print(f)
-  if seg is not None and v1 is not None:
-    arr.insert_at_vertices(seg, v0, v1)
+    elif obj.is_halfedge():
+        he = Halfedge()
+        obj.get_halfedge(he)
+        if compare_x(v0.point(), he.target().point()) == EQUAL:
+            # same x coordinate, just connect
+            v1 = he.target.point()
+            seg = Segment_2(v0.point(), v1.point())
+        else:
+            # vertical project v to the segment, split and connect
+            tangent = Line_2(he.source().point(), he.target().point())
+            # project v0 upwards
+            x, y = point_2_to_xy(v0.point())
+            vertical = Line_2(v0.point(), xy_to_point_2(x, y + 1))
+            # intersect
+            res = intersection(tangent, vertical)
+            p = Point_2()
+            res.get_point(p)
+            seg = Segment_2(v0.point(), p)
+            source_half = Segment_2(he.source().point(), p)
+            target_half = Segment_2(p, he.target().point())
+            arr.split_edge(he, source_half, target_half)
+            v1 = he.target()
+    else:  # obj is a face
+        f = Face()
+        obj.get_face(f)
+        print(f)
+    if seg is not None and v1 is not None:
+        arr.insert_at_vertices(seg, v0, v1)
+
+
+"""
+Input: arrangement of trapezoidal free space
+Output: graph discretization of the free space, roadmap.
+Notes:
+Nodes of the graph are midpoints of every face in the free space.
+Edges are added between nodes representing incident faces.a
+"""
+# TODO Remove assertions before submitting
+def build_roadmap(conf_space: Arrangement_2):
+    roadmap = defaultdict(list)
+
+    # Input: face in configuration space
+    # Output: a list of its bounding points
+    def face_to_points(face: Face) -> List[Point_2]:
+        points = []
+
+        for bounding_he in face.outer_ccb():  # traverse outer components of face
+            assert isinstance(bounding_he, Halfedge)
+            new_point = bounding_he.source()  # append points of bounding half edges
+            assert isinstance(new_point, Vertex)
+            points.append(new_point.point())
+        return points
+
+    # Input: list of all points bounding a face
+    # Output: average point of face, or centroid
+    def get_face_midpoint(face: Face) -> Point_2:
+        face_points = face_to_points(face)
+        midpoint_x, midpoint_y = 0, 0
+
+        for point in face_points:
+            midpoint_x += point_2_to_xy(point)[0]
+            midpoint_y += point_2_to_xy(point)[1]
+        return Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points))
+
+    # traverse faces of the free space
+    for face in conf_space.faces():
+        assert isinstance(face, Face)
+        # we only care about free faces
+        if Face.data(face) != "Free":
+            pass
+        face_midpoint = get_face_midpoint(face)
+        roadmap[face_midpoint] = []
+
+        for bounding_he in face.outer_ccb():
+            assert isinstance(bounding_he, Halfedge)
+            bounding_twin = bounding_he.twin()
+            assert isinstance(bounding_twin, Halfedge)
+            incident_face = bounding_twin.face()
+            assert isinstance(incident_face, Face)
+            if Face.data(incident_face) != "Free":
+                pass
+            incident_midpoint = get_face_midpoint(face)
+            assert isinstance(incident_midpoint, Point_2)
+            roadmap[face_midpoint].append(incident_midpoint)
+    return roadmap
