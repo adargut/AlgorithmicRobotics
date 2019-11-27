@@ -120,14 +120,17 @@ def add_vertical_segment(arr, v0, obj):
             source_half = Segment_2(he.source().point(), p)
             target_half = Segment_2(p, he.target().point())
             assert isinstance(arr, Arrangement_2)
-            Arrangement_2.split_edge(arr, he, source_half, target_half)
+            c1 = Curve_2(source_half)
+            c2 = Curve_2(target_half)
+            arr.split_edge(he, c1, c2)
             v1 = he.target()
     else:  # obj is a face
         f = Face()
         obj.get_face(f)
         print(f)
     if seg is not None and v1 is not None:
-        arr.insert_at_vertices(seg, v0, v1)
+        c0 = Curve_2(seg)
+        arr.insert_at_vertices(c0, v0, v1)
 
 
 """
@@ -137,6 +140,8 @@ Notes:
 Nodes of the graph are midpoints of every face in the free space.
 Edges are added between nodes representing incident faces.a
 """
+
+
 # TODO Remove assertions before submitting
 def build_roadmap(conf_space: Arrangement_2):
     roadmap = defaultdict(list)
