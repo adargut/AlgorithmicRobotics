@@ -192,7 +192,7 @@ def build_roadmap(conf_space: Arrangement_2):
             assert isinstance(incident_face, Face)
             if Face.data(incident_face) != "Free":
                 pass
-            incident_midpoint = get_face_midpoint(face)
+            incident_midpoint = get_face_midpoint(incident_face)
             assert isinstance(incident_midpoint, Point_2)
             # append midpoint of incident face as neighbor of the midpoint of the current face
             roadmap[face_midpoint].append(incident_midpoint)
