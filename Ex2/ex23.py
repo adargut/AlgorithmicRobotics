@@ -17,24 +17,23 @@ def generate_path(path, robot, obstacles, destination):
     reflect_r = reflect_polygon(r)
     # compute minkowski sum
     # TODO maybe compute individually for each obstacle, mark free faces (trivial) & then overlay them
+    # TODO for any individual mink. sum, there is one unbounded face with one inner ccb, that is the only non-free face
     conf_obst = [minkowski_sum_2(reflect_r, ob).outer_boundary() for ob in obs]
 
     # conf_space = Polygon_set_2()
     # conf_space.insert_polygons(conf_obst)
+    # TODO add a bounding box to conf_space, maybe overlay with Bbox_2?
     conf_space = obstacles_to_arrangement(conf_obst)
     # print(conf_space)
-    # build_roadmap(conf_space)
     # vertical_decompose(conf_space)
-    print(conf_space.number_of_halfedges(), "halfedges count")
-    print(conf_space.number_of_edges(), "edges count")
-    print(conf_space.number_of_unbounded_faces(), 'num of unbounded face')
+    build_roadmap(conf_space)
     # print(conf_space)
 
-    print("done")
-
-    path.append(Point_2(300, 400))
-    path.append(Point_2(300, 1000))
-    path.append(Point_2(700, 1000))
+    # path.append(Point_2(300, 400))
+    # path.append(Point_2(300, 1000))
+    # path.append(Point_2(700, 1000))
+    for vertex in conf_space.vertices():
+        path.append(vertex.point())
     pass
 
 
@@ -144,7 +143,7 @@ def add_vertical_segment(arr, v0, obj):
 Input: arrangement of trapezoidal free space
 Output: graph discretization of the free space, roadmap.
 Notes:
-Nodes of the graph are midpoints of every face in the free space.
+Nodes of the graph are midpoints of every face in the free space, as well as midpoints of every halfedge.
 Edges are added between nodes representing incident faces.a
 """
 
@@ -201,10 +200,9 @@ def build_roadmap(conf_space: Arrangement_2):
             bounding_he_midpoint = get_halfedge_midpoint(bounding_he)
             # add graph edge from face midpoint to bounding half edge midpoint
             roadmap[face_midpoint].append(bounding_he_midpoint)
-            # add graph edges between half edges bounding face to their twins
+            # graph needs to be undirected, add edge in other direction
             if bounding_he_midpoint not in roadmap:
-                roadmap[bounding_he_midpoint] = [face_midpoint, get_halfedge_midpoint(bounding_he.twin())]
+                roadmap[bounding_he_midpoint] = [face_midpoint]
             else:
                 roadmap[bounding_he_midpoint].append(face_midpoint)
-                roadmap[bounding_he_midpoint].append(get_halfedge_midpoint(bounding_he.twin()))
     return roadmap
