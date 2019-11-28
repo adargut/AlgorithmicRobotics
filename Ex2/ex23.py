@@ -16,15 +16,21 @@ def generate_path(path, robot, obstacles, destination):
     # reflect robor to get -R
     reflect_r = reflect_polygon(r)
     # compute minkowski sum
+    # TODO maybe compute individually for each obstacle, mark free faces (trivial) & then overlay them
     conf_obst = [minkowski_sum_2(reflect_r, ob).outer_boundary() for ob in obs]
 
     # conf_space = Polygon_set_2()
     # conf_space.insert_polygons(conf_obst)
     conf_space = obstacles_to_arrangement(conf_obst)
-    print(conf_space)
-    # build_roadmap(conf_space)
-    vertical_decompose(conf_space)
     # print(conf_space)
+    # build_roadmap(conf_space)
+    # vertical_decompose(conf_space)
+    print(conf_space.number_of_halfedges(), "halfedges count")
+    print(conf_space.number_of_edges(), "edges count")
+    print(conf_space.number_of_unbounded_faces(), 'num of unbounded face')
+    # print(conf_space)
+
+    print("done")
 
     path.append(Point_2(300, 400))
     path.append(Point_2(300, 1000))
@@ -75,7 +81,8 @@ def vertical_decompose(arr):
     for pair in l:
         # pair is a tuple
         # pair[0] is an arrangement vertex
-        # pair[1] is a pair holding the objects (vertex, halfedge, or face) above and below the vertex, that is, the objects hit by the vertical walls emanating from the vertex
+        # pair[1] is a pair holding the objects (vertex, halfedge, or face) above and below the vertex, that is,
+        # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
         print(v0)
         below, upper = pair[1]
@@ -158,6 +165,7 @@ def build_roadmap(conf_space: Arrangement_2):
             new_point = bounding_he.source()
             assert isinstance(new_point, Vertex)
             points.append(new_point.point())
+        assert len(points) != 0
         return points
 
     # Input: list of all points bounding a face
@@ -172,28 +180,31 @@ def build_roadmap(conf_space: Arrangement_2):
             midpoint_y += point_2_to_xy(point)[1]
         return Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points))
 
+    # Input: a halfedge in the arrangement
+    # Output: midpoint of halfedge
+    def get_halfedge_midpoint(he: Halfedge) -> Point_2:
+        x_coord = (he.source()[0] + he.twin().source()[0]) / 2
+        y_coord = (he.source()[1] + he.twin().source()[1]) / 2
+
+        return Point_2(x_coord, y_coord)
+
     # traverse faces of the free space
     for face in conf_space.faces():
-        assert isinstance(face, Face)
-        # we only care about free faces
-        if Face.data(face) != "Free":
-            pass
-        # use midpoint of face as key to dictionary
+        if face.data() != 1:
+            continue  # we only care about faces in the free space
         face_midpoint = get_face_midpoint(face)
         roadmap[face_midpoint] = []
 
-        # traverse bounding half-edges of face
+        # traverse outer half edges of face
         for bounding_he in face.outer_ccb():
-            assert isinstance(bounding_he, Halfedge)
-            # go to twin in order to find incident faces to the left
-            bounding_twin = bounding_he.twin()
-            assert isinstance(bounding_twin, Halfedge)
-            incident_face = bounding_twin.face()
-            assert isinstance(incident_face, Face)
-            if Face.data(incident_face) != "Free":
-                pass
-            incident_midpoint = get_face_midpoint(incident_face)
-            assert isinstance(incident_midpoint, Point_2)
-            # append midpoint of incident face as neighbor of the midpoint of the current face
-            roadmap[face_midpoint].append(incident_midpoint)
+            # find midpoint of bounding half edge
+            bounding_he_midpoint = get_halfedge_midpoint(bounding_he)
+            # add graph edge from face midpoint to bounding half edge midpoint
+            roadmap[face_midpoint].append(bounding_he_midpoint)
+            # add graph edges between half edges bounding face to their twins
+            if bounding_he_midpoint not in roadmap:
+                roadmap[bounding_he_midpoint] = [face_midpoint, get_halfedge_midpoint(bounding_he.twin())]
+            else:
+                roadmap[bounding_he_midpoint].append(face_midpoint)
+                roadmap[bounding_he_midpoint].append(get_halfedge_midpoint(bounding_he.twin()))
     return roadmap
