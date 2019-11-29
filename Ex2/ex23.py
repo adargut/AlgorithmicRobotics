@@ -13,19 +13,10 @@ def generate_path(path, robot, obstacles, destination):
     obs = [tuples_list_to_polygon_2(o) for o in obstacles]
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
-    # reflect robor to get -R
-    reflect_r = reflect_polygon(r)
-    # compute minkowski sum
-    # TODO maybe compute individually for each obstacle, mark free faces (trivial) & then overlay them
-    # TODO for any individual mink. sum, there is one unbounded face with one inner ccb, that is the only non-free face
-    conf_obst = [minkowski_sum_2(reflect_r, ob).outer_boundary() for ob in obs]
-
-    # conf_space = Polygon_set_2()
-    # conf_space.insert_polygons(conf_obst)
     # TODO add a bounding box to conf_space, maybe overlay with Bbox_2?
-    conf_space = obstacles_to_arrangement(conf_obst)
+    conf_space = compute_configuration_space(obs, r)
     # print(conf_space)
-    # vertical_decompose(conf_space)
+    vertical_decompose(conf_space)
     build_roadmap(conf_space)
     # print(conf_space)
 
@@ -55,6 +46,26 @@ def obstacles_to_arrangement(obstacles):
         for e in polygon.edges():
             lst.append(Curve_2(e))
     insert(arr, lst)
+    return arr
+
+
+def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) -> Arrangement_2:
+    reflected_robot = reflect_polygon(robot)
+    arr = Arrangement_2()
+    for obstacle in obstacles:
+        msum = minkowski_sum_2(reflected_robot, obstacle)
+        boundary = msum.outer_boundary()
+        assert isinstance(boundary, Polygon_2)
+        insert_non_intersecting_curves(arr, map(Curve_2, boundary.edges()))
+
+    def mark_free_space(face: Face, is_free: bool) -> None:
+        face.set_data(int(is_free))
+        if face.number_of_inner_ccbs() > 0:
+            for hole in face.holes():
+                mark_free_space(hole, not is_free)
+
+    unbounded_face = arr.unbounded_face()
+    mark_free_space(unbounded_face, True)
     return arr
 
 
@@ -110,7 +121,7 @@ def add_vertical_segment(arr, v0, obj):
         obj.get_halfedge(he)
         if compare_x(v0.point(), he.target().point()) == EQUAL:
             # same x coordinate, just connect
-            v1 = he.target.point()
+            v1 = he.target().point()
             seg = Segment_2(v0.point(), v1.point())
         else:
             # vertical project v to the segment, split and connect
