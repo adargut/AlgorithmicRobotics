@@ -96,6 +96,7 @@ def vertical_decompose(arr):
         # pair[1] is a pair holding the objects (vertex, halfedge, or face) above and below the vertex, that is,
         # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
+        print(f"Now decomposing {v0.point()}")
         below, upper = pair[1]
         prev_lower_point = Point_2()
         # if the feature above the previous vertex is not the current vertex,
@@ -105,9 +106,12 @@ def vertical_decompose(arr):
         else:
             is_prev_below_obj_point = False
         if prev is None or not is_prev_below_obj_point or not prev_lower_point == v0.point():
+            print("\tBelow")
             add_vertical_segment(arr, v0, below)
+        print("\tAbove")
         add_vertical_segment(arr, v0, upper)
         prev = pair[1]
+    print("Done decomposing")
 
 
 def add_vertical_segment(arr, v0, obj):
@@ -116,10 +120,13 @@ def add_vertical_segment(arr, v0, obj):
     if obj.is_vertex():
         v1 = Vertex()
         obj.get_vertex(v1)
+        print(f"\tVertex - {v1.point()}")
         seg = Segment_2(v0.point(), v1.point())
     elif obj.is_halfedge():
         he = Halfedge()
         obj.get_halfedge(he)
+        print(f"\tHalfedge - {he.curve()}")
+        # check if need to
         if compare_x(v0.point(), he.target().point()) == EQUAL:
             # same x coordinate, just connect
             v1 = he.target().point()
@@ -134,21 +141,24 @@ def add_vertical_segment(arr, v0, obj):
             res = intersection(tangent, vertical)
             p = Point_2()
             res.get_point(p)
+            #y_top = tangent.y_at_x(v0.point().x())
             seg = Segment_2(v0.point(), p)
-            source_half = Segment_2(he.source().point(), p)
-            target_half = Segment_2(p, he.target().point())
-            assert isinstance(arr, Arrangement_2)
-            c1 = Curve_2(source_half)
-            c2 = Curve_2(target_half)
-            arr.split_edge(he, c1, c2)
-            v1 = he.target()
-    else:  # obj is a face
+            # source_half = Segment_2(he.source().point(), p)
+            # target_half = Segment_2(p, he.target().point())
+            # assert isinstance(arr, Arrangement_2)
+            # c1 = Curve_2(source_half)
+            # c2 = Curve_2(target_half)
+            # arr.split_edge(he, c1, c2)
+            v1 = seg.target()
+    else:  # obj is a face or empty
         f = Face()
         obj.get_face(f)
-        print(f)
+        print(f'Face data {f.data()}')
     if seg is not None and v1 is not None:
         c0 = Curve_2(seg)
-        arr.insert_at_vertices(c0, v0, v1)
+        print(f'Adding {c0}')
+        #arr.insert_at_vertices(c0, v0, v1) # FIXME: STUCK!
+        insert(arr, c0)
 
 
 """
