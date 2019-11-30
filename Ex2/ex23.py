@@ -4,6 +4,8 @@ from typing import List
 from arr2_epec_seg_ex import *  # Arr_overlay_traits, Arrangement_2, Point_2
 from conversions import *
 
+FREE_SPACE_FACE = True
+
 
 def generate_path(path, robot, obstacles, destination):
     assert obstacles is not None
@@ -67,7 +69,7 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
                 break  # we only need the first edge of the inner_ccb to get the face
 
     unbounded_face = arr.unbounded_face()
-    mark_free_space(unbounded_face, True)
+    mark_free_space(unbounded_face, FREE_SPACE_FACE)
     return arr
 
 
@@ -97,7 +99,9 @@ def vertical_decompose(arr):
         # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
         print(f"Now decomposing {v0.point()}")
-        below, upper = pair[1]
+        assert isinstance(v0, Vertex)
+        # half_edges_of_v0 = list(v0.incident_halfedges())
+        below_obj, upper_obj = pair[1]
         prev_lower_point = Point_2()
         # if the feature above the previous vertex is not the current vertex,
         # add a vertical segment towards below feature
@@ -107,14 +111,14 @@ def vertical_decompose(arr):
             is_prev_below_obj_point = False
         if prev is None or not is_prev_below_obj_point or not prev_lower_point == v0.point():
             print("\tBelow")
-            add_vertical_segment(arr, v0, below)
+            add_vertical_segment(arr, v0, below_obj, False)
         print("\tAbove")
-        add_vertical_segment(arr, v0, upper)
+        add_vertical_segment(arr, v0, upper_obj, True)
         prev = pair[1]
     print("Done decomposing")
 
 
-def add_vertical_segment(arr, v0, obj):
+def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
     seg = None
     v1 = None
     if obj.is_vertex():
@@ -126,7 +130,18 @@ def add_vertical_segment(arr, v0, obj):
         he = Halfedge()
         obj.get_halfedge(he)
         print(f"\tHalfedge - {he.curve()}")
-        # check if need to
+        add_segment = False
+        # if he.direction() == ARR_RIGHT_TO_LEFT:
+        #     # he.face() always gives the left sided face
+        #     if he.face().data() == FREE_SPACE_FACE:
+        #         # This is a lower envelope of a obstacle, we want to add
+        #         add_segment = True
+        #     elif he.face().data() == (not FREE_SPACE_FACE) :
+        #     else:
+        # Check if the half edge is an outer component of the polygon
+        if (he.direction() == ARR_LEFT_TO_RIGHT and he.face().data() == 0) \
+                or (he.direction() == ARR_RIGHT_TO_LEFT and he.face().data() == 0):
+            print('A')
         if compare_x(v0.point(), he.target().point()) == EQUAL:
             # same x coordinate, just connect
             v1 = he.target().point()
@@ -143,12 +158,6 @@ def add_vertical_segment(arr, v0, obj):
             res.get_point(p)
             #y_top = tangent.y_at_x(v0.point().x())
             seg = Segment_2(v0.point(), p)
-            # source_half = Segment_2(he.source().point(), p)
-            # target_half = Segment_2(p, he.target().point())
-            # assert isinstance(arr, Arrangement_2)
-            # c1 = Curve_2(source_half)
-            # c2 = Curve_2(target_half)
-            # arr.split_edge(he, c1, c2)
             v1 = seg.target()
     else:  # obj is a face or empty
         f = Face()
@@ -157,7 +166,6 @@ def add_vertical_segment(arr, v0, obj):
     if seg is not None and v1 is not None:
         c0 = Curve_2(seg)
         print(f'Adding {c0}')
-        #arr.insert_at_vertices(c0, v0, v1) # FIXME: STUCK!
         insert(arr, c0)
 
 
