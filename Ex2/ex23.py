@@ -60,6 +60,28 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
         assert isinstance(boundary, Polygon_2)
         insert_non_intersecting_curves(arr, list(map(Curve_2, boundary.edges())))
 
+    # Bounding Box
+    all_points_sorted = sorted([v.point() for v in arr.vertices()])
+    bottom_left = point_2_to_xy(all_points_sorted[0])
+    top_right = point_2_to_xy(all_points_sorted[-1])
+
+    xmin = int(bottom_left[0] + 0.5) - 1
+    ymin = int(bottom_left[1] + 0.5) - 1
+    xmax = int(top_right[0] + 0.5) + 1
+    ymax = int(top_right[1] + 0.5) + 1
+
+    bounds = [
+        Curve_2(xy_to_point_2(xmin, ymin), xy_to_point_2(xmin, ymax)),
+        Curve_2(xy_to_point_2(xmin, ymin), xy_to_point_2(xmax, ymin)),
+        Curve_2(xy_to_point_2(xmax, ymax), xy_to_point_2(xmin, ymax)),
+        Curve_2(xy_to_point_2(xmax, ymax), xy_to_point_2(xmax, ymin)),
+    ]
+
+    insert_non_intersecting_curves(arr, bounds)
+
+    print(arr.number_of_unbounded_faces())
+    print(arr.number_of_faces())
+
     def mark_free_space(face: Face, is_free: bool) -> None:
         face.set_data(int(is_free))
         for inner_ccb in face.inner_ccbs():
@@ -69,7 +91,7 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
                 break  # we only need the first edge of the inner_ccb to get the face
 
     unbounded_face = arr.unbounded_face()
-    mark_free_space(unbounded_face, FREE_SPACE_FACE)
+    mark_free_space(unbounded_face, not FREE_SPACE_FACE)
     return arr
 
 
@@ -88,10 +110,9 @@ def arr_overlay(arr1, arr2):
 
 def vertical_decompose(arr):
     l = []
-    # decomp = Polygon_vertical_decomposition()
     decompose(arr, l)
-    # decompose(arr, d)
-    prev = None
+    pl = Arr_landmarks_point_location(arr)
+    pl.locate()
     for pair in l:
         # pair is a tuple
         # pair[0] is an arrangement vertex
@@ -99,22 +120,13 @@ def vertical_decompose(arr):
         # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
         print(f"Now decomposing {v0.point()}")
-        assert isinstance(v0, Vertex)
-        # half_edges_of_v0 = list(v0.incident_halfedges())
         below_obj, upper_obj = pair[1]
-        prev_lower_point = Point_2()
         # if the feature above the previous vertex is not the current vertex,
         # add a vertical segment towards below feature
-        if prev is not None and hasattr(prev[1], 'get_point'):
-            is_prev_below_obj_point = prev[1].get_point(prev_lower_point)
-        else:
-            is_prev_below_obj_point = False
-        if prev is None or not is_prev_below_obj_point or not prev_lower_point == v0.point():
-            print("\tBelow")
-            add_vertical_segment(arr, v0, below_obj, False)
+        print("\tBelow")
+        add_vertical_segment(arr, v0, below_obj, False)
         print("\tAbove")
         add_vertical_segment(arr, v0, upper_obj, True)
-        prev = pair[1]
     print("Done decomposing")
 
 
@@ -130,35 +142,21 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
         he = Halfedge()
         obj.get_halfedge(he)
         print(f"\tHalfedge - {he.curve()}")
-        add_segment = False
-        # if he.direction() == ARR_RIGHT_TO_LEFT:
-        #     # he.face() always gives the left sided face
-        #     if he.face().data() == FREE_SPACE_FACE:
-        #         # This is a lower envelope of a obstacle, we want to add
-        #         add_segment = True
-        #     elif he.face().data() == (not FREE_SPACE_FACE) :
-        #     else:
-        # Check if the half edge is an outer component of the polygon
-        if (he.direction() == ARR_LEFT_TO_RIGHT and he.face().data() == 0) \
-                or (he.direction() == ARR_RIGHT_TO_LEFT and he.face().data() == 0):
-            print('A')
-        if compare_x(v0.point(), he.target().point()) == EQUAL:
-            # same x coordinate, just connect
-            v1 = he.target().point()
-            seg = Segment_2(v0.point(), v1.point())
-        else:
-            # vertical project v to the segment, split and connect
-            tangent = Line_2(he.source().point(), he.target().point())
-            # project v0 upwards
-            x, y = point_2_to_xy(v0.point())
-            vertical = Line_2(v0.point(), xy_to_point_2(x, y + 1))
-            # intersect
-            res = intersection(tangent, vertical)
-            p = Point_2()
-            res.get_point(p)
-            #y_top = tangent.y_at_x(v0.point().x())
-            seg = Segment_2(v0.point(), p)
-            v1 = seg.target()
+        assert he.direction() == ARR_RIGHT_TO_LEFT
+        # test if ray needs to be added
+        test_halfedge = he if is_obj_above_vertex else he.twin()
+        if test_halfedge.face().data() == FREE_SPACE_FACE:
+            if compare_x(v0.point(), he.target().point()) == EQUAL:
+                # same x coordinate, just connect
+                v1 = he.target().point()
+                seg = Segment_2(v0.point(), v1.point())
+            else:
+                # vertical project v to the segment, split and connect
+                tangent = Line_2(he.source().point(), he.target().point())
+                # project v0 upwards
+                y_top = tangent.y_at_x(v0.point().x())
+                seg = Segment_2(v0.point(), Point_2(v0.point().x(), y_top))
+                v1 = seg.target()
     else:  # obj is a face or empty
         f = Face()
         obj.get_face(f)
