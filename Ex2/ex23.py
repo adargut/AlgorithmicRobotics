@@ -56,13 +56,15 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
         msum = minkowski_sum_2(reflected_robot, obstacle)
         boundary = msum.outer_boundary()
         assert isinstance(boundary, Polygon_2)
-        insert_non_intersecting_curves(arr, map(Curve_2, boundary.edges()))
+        insert_non_intersecting_curves(arr, list(map(Curve_2, boundary.edges())))
 
     def mark_free_space(face: Face, is_free: bool) -> None:
         face.set_data(int(is_free))
-        if face.number_of_inner_ccbs() > 0:
-            for hole in face.holes():
-                mark_free_space(hole, not is_free)
+        for inner_ccb in face.inner_ccbs():
+            for half_edge in inner_ccb:
+                inner_face = half_edge.twin().face()
+                mark_free_space(inner_face, not is_free)
+                break  # we only need the first edge of the inner_ccb to get the face
 
     unbounded_face = arr.unbounded_face()
     mark_free_space(unbounded_face, True)
@@ -94,7 +96,6 @@ def vertical_decompose(arr):
         # pair[1] is a pair holding the objects (vertex, halfedge, or face) above and below the vertex, that is,
         # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
-        print(v0)
         below, upper = pair[1]
         prev_lower_point = Point_2()
         # if the feature above the previous vertex is not the current vertex,
