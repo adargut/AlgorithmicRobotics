@@ -4,6 +4,7 @@ from typing import List
 from arr2_epec_seg_ex import *  # Arr_overlay_traits, Arrangement_2, Point_2
 from conversions import *
 
+FREE_FACE = "free"
 FORBIDDEN_FACE = "obstacle"
 
 
@@ -18,16 +19,16 @@ def generate_path(path, robot, obstacles, destination):
 
     conf_space = compute_configuration_space(obs, r, d)
     print(conf_space)
-    trapezoid_decompose(conf_space)
-    print(conf_space)
-    #build_roadmap(conf_space)
+    trapezoid_space = trapezoid_decompose(conf_space)
+    print(trapezoid_space)
+    #build_roadmap(trapezoid_space)
 
     # path.append(Point_2(300, 400))
     # path.append(Point_2(300, 1000))
     # path.append(Point_2(700, 1000))
-    for vertex in conf_space.vertices():
+    for vertex in trapezoid_space.vertices():
         path.append(vertex.point())
-    return [e.curve() for e in conf_space.halfedges()]
+    return [e.curve() for e in trapezoid_space.halfedges()]
 
 
 def reflect_polygon(polygon: Polygon_2) -> Polygon_2:
@@ -71,11 +72,13 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2, de
     all_y_sorted = sorted([v.point().y().to_double() for v in arr.vertices()]
                           + [v.y().to_double() for v in robot.vertices()]
                           + [destination.y().to_double()])
-
-    xmin = all_x_sorted[0] - 50
-    xmax = all_x_sorted[-1] + 50
-    ymin = all_y_sorted[0] - 50
-    ymax = all_y_sorted[-1] + 50
+    robot_bbox = robot.bbox()
+    assert isinstance(robot_bbox, Bbox_2)
+    #robot_bbox.min()
+    xmin = -200 #all_x_sorted[0] - 50
+    xmax = 2000 #all_x_sorted[-1] + 50
+    ymin = -200 #all_y_sorted[0] - 50
+    ymax = 2000 #all_y_sorted[-1] + 50
 
     bounds = [
         Curve_2(xy_to_point_2(xmin, ymin), xy_to_point_2(xmin, ymax)),
@@ -90,15 +93,18 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2, de
     print(arr.number_of_faces())
 
     def mark_free_space(face: Face, is_free: bool) -> None:
-        face.set_data(FORBIDDEN_FACE if is_free else None)
+        face.set_data(FREE_FACE if is_free else FORBIDDEN_FACE)
+        print(f'{face.number_of_inner_ccbs()}')
         for inner_ccb in face.inner_ccbs():
             for half_edge in inner_ccb:
                 inner_face = half_edge.twin().face()
+
+                print(f'Going into face vertices # {len(list(inner_face.outer_ccb()))}')
                 mark_free_space(inner_face, not is_free)
                 break  # we only need the first edge of the inner_ccb to get the face
-
+        print('----')
     unbounded_face = arr.unbounded_face()
-    mark_free_space(unbounded_face, True)
+    mark_free_space(unbounded_face, False)
     return arr
 
 
@@ -118,6 +124,7 @@ def arr_overlay(arr1, arr2):
 def trapezoid_decompose(arr):
     l = []
     decompose(arr, l)
+    verticals = []
     for pair in l:
         # pair is a tuple
         # pair[0] is an arrangement vertex
@@ -129,10 +136,18 @@ def trapezoid_decompose(arr):
         # if the feature above the previous vertex is not the current vertex,
         # add a vertical segment towards below feature
         print("\tBelow")
-        add_vertical_segment(arr, v0, below_obj, False)
+        down_curve = add_vertical_segment(arr, v0, below_obj, False)
+        if down_curve is not None:
+            verticals.append(down_curve)
         print("\tAbove")
-        add_vertical_segment(arr, v0, upper_obj, True)
+        up_curve = add_vertical_segment(arr, v0, upper_obj, True)
+        if up_curve is not None:
+            verticals.append(up_curve)
     print("Done decomposing")
+    #res_arr = arr_overlay(arr, verticals)
+    for curve in verticals:
+        insert(arr, curve)
+    return arr
 
 
 def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
@@ -146,13 +161,11 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
     elif obj.is_halfedge():
         he = Halfedge()
         obj.get_halfedge(he)
-        if he.source().point().y().to_double == -50:
-            print("Here!!!!!!!!!!")
         print(f"\tHalfedge - {he.curve()}")
         assert he.direction() == ARR_RIGHT_TO_LEFT
         # test if ray needs to be added
         test_halfedge = he if is_obj_above_vertex else he.twin()
-        if test_halfedge.face().data() != FORBIDDEN_FACE:
+        if test_halfedge.face().data() == FREE_FACE:
             print("\t\tCalculating vertical wall")
             if compare_x(v0.point(), he.target().point()) == EQUAL:
                 # same x coordinate, just connect
@@ -164,13 +177,14 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
                 # project v0 upwards
                 y_top = tangent.y_at_x(v0.point().x())
                 seg = Segment_2(v0.point(), Point_2(v0.point().x(), y_top))
-                v1 = seg.target()
+                #v1 = seg.target()
         else:
             print("\t\tSkipping - wall inside the obstacle")
-    if seg is not None and v1 is not None:
+    if seg is not None:
         c0 = Curve_2(seg)
         print(f'\t\tAdding {c0}')
-        insert(arr, c0)
+        return c0
+    return None
 
 
 """
@@ -180,46 +194,45 @@ Notes:
 Nodes of the graph are midpoints of every face in the free space, as well as midpoints of every halfedge.
 Edges are added between nodes representing incident faces.a
 """
+# Input: face in configuration space
+# Output: a list of its bounding points
+def face_to_points(face: Face) -> List[Point_2]:
+    points = []
+
+    # traverse outer components of face
+    for bounding_he in face.outer_ccb():
+        assert isinstance(bounding_he, Halfedge)
+        # append points of bounding half edges
+        new_point = bounding_he.source()
+        assert isinstance(new_point, Vertex)
+        points.append(new_point.point())
+    assert len(points) != 0
+    return points
+
+# Input: list of all points bounding a face
+# Output: average point of face, or centroid
+def get_face_midpoint(face: Face) -> Point_2:
+    face_points = face_to_points(face)
+    midpoint_x, midpoint_y = 0, 0
+
+    # average out all points of face
+    for point in face_points:
+        midpoint_x += point_2_to_xy(point)[0]
+        midpoint_y += point_2_to_xy(point)[1]
+    return Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points))
+
+# Input: a halfedge in the arrangement
+# Output: midpoint of halfedge
+def get_halfedge_midpoint(he: Halfedge) -> Point_2:
+    x_coord = (he.source()[0] + he.twin().source()[0]) / 2
+    y_coord = (he.source()[1] + he.twin().source()[1]) / 2
+
+    return Point_2(x_coord, y_coord)
 
 
 # TODO Remove assertions before submitting
 def build_roadmap(conf_space: Arrangement_2):
     roadmap = defaultdict(list)
-
-    # Input: face in configuration space
-    # Output: a list of its bounding points
-    def face_to_points(face: Face) -> List[Point_2]:
-        points = []
-
-        # traverse outer components of face
-        for bounding_he in face.outer_ccb():
-            assert isinstance(bounding_he, Halfedge)
-            # append points of bounding half edges
-            new_point = bounding_he.source()
-            assert isinstance(new_point, Vertex)
-            points.append(new_point.point())
-        assert len(points) != 0
-        return points
-
-    # Input: list of all points bounding a face
-    # Output: average point of face, or centroid
-    def get_face_midpoint(face: Face) -> Point_2:
-        face_points = face_to_points(face)
-        midpoint_x, midpoint_y = 0, 0
-
-        # average out all points of face
-        for point in face_points:
-            midpoint_x += point_2_to_xy(point)[0]
-            midpoint_y += point_2_to_xy(point)[1]
-        return Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points))
-
-    # Input: a halfedge in the arrangement
-    # Output: midpoint of halfedge
-    def get_halfedge_midpoint(he: Halfedge) -> Point_2:
-        x_coord = (he.source()[0] + he.twin().source()[0]) / 2
-        y_coord = (he.source()[1] + he.twin().source()[1]) / 2
-
-        return Point_2(x_coord, y_coord)
 
     # traverse faces of the free space
     for face in conf_space.faces():
