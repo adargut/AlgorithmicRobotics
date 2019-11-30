@@ -4,7 +4,7 @@ from typing import List
 from arr2_epec_seg_ex import *  # Arr_overlay_traits, Arrangement_2, Point_2
 from conversions import *
 
-FREE_SPACE_FACE = True
+FORBIDDEN_FACE = "obstacle"
 
 
 def generate_path(path, robot, obstacles, destination):
@@ -15,22 +15,22 @@ def generate_path(path, robot, obstacles, destination):
     obs = [tuples_list_to_polygon_2(o) for o in obstacles]
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
-    # TODO add a bounding box to conf_space, maybe overlay with Bbox_2?
-    conf_space = compute_configuration_space(obs, r)
-    # print(conf_space)
-    vertical_decompose(conf_space)
-    build_roadmap(conf_space)
-    # print(conf_space)
+
+    conf_space = compute_configuration_space(obs, r, d)
+    print(conf_space)
+    trapezoid_decompose(conf_space)
+    print(conf_space)
+    #build_roadmap(conf_space)
 
     # path.append(Point_2(300, 400))
     # path.append(Point_2(300, 1000))
     # path.append(Point_2(700, 1000))
     for vertex in conf_space.vertices():
         path.append(vertex.point())
-    pass
+    return [e.curve() for e in conf_space.halfedges()]
 
 
-def reflect_polygon(polygon):
+def reflect_polygon(polygon: Polygon_2) -> Polygon_2:
     out = []
     for v in polygon.vertices():
         x, y = point_2_to_xy(v)
@@ -51,8 +51,12 @@ def obstacles_to_arrangement(obstacles):
     return arr
 
 
-def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) -> Arrangement_2:
-    reflected_robot = reflect_polygon(robot)
+def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2, destination: Point_2) -> Arrangement_2:
+    # move robot top to (0, 0)
+    top_x, top_y = point_2_to_xy(robot.top_vertex())
+    moved_robot_points = [(x - top_x, y - top_y) for (x, y) in polygon_2_to_tuples_list(robot)]
+    start_robot = tuples_list_to_polygon_2(moved_robot_points)
+    reflected_robot = reflect_polygon(start_robot)
     arr = Arrangement_2()
     for obstacle in obstacles:
         msum = minkowski_sum_2(reflected_robot, obstacle)
@@ -61,14 +65,17 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
         insert_non_intersecting_curves(arr, list(map(Curve_2, boundary.edges())))
 
     # Bounding Box
-    all_points_sorted = sorted([v.point() for v in arr.vertices()])
-    bottom_left = point_2_to_xy(all_points_sorted[0])
-    top_right = point_2_to_xy(all_points_sorted[-1])
+    all_x_sorted = sorted([v.point().x().to_double() for v in arr.vertices()]
+                          + [v.x().to_double() for v in robot.vertices()]
+                          + [destination.x().to_double()])
+    all_y_sorted = sorted([v.point().y().to_double() for v in arr.vertices()]
+                          + [v.y().to_double() for v in robot.vertices()]
+                          + [destination.y().to_double()])
 
-    xmin = int(bottom_left[0] + 0.5) - 1
-    ymin = int(bottom_left[1] + 0.5) - 1
-    xmax = int(top_right[0] + 0.5) + 1
-    ymax = int(top_right[1] + 0.5) + 1
+    xmin = all_x_sorted[0] - 50
+    xmax = all_x_sorted[-1] + 50
+    ymin = all_y_sorted[0] - 50
+    ymax = all_y_sorted[-1] + 50
 
     bounds = [
         Curve_2(xy_to_point_2(xmin, ymin), xy_to_point_2(xmin, ymax)),
@@ -83,7 +90,7 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
     print(arr.number_of_faces())
 
     def mark_free_space(face: Face, is_free: bool) -> None:
-        face.set_data(int(is_free))
+        face.set_data(FORBIDDEN_FACE if is_free else None)
         for inner_ccb in face.inner_ccbs():
             for half_edge in inner_ccb:
                 inner_face = half_edge.twin().face()
@@ -91,7 +98,7 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2) ->
                 break  # we only need the first edge of the inner_ccb to get the face
 
     unbounded_face = arr.unbounded_face()
-    mark_free_space(unbounded_face, not FREE_SPACE_FACE)
+    mark_free_space(unbounded_face, True)
     return arr
 
 
@@ -108,11 +115,9 @@ def arr_overlay(arr1, arr2):
     return res
 
 
-def vertical_decompose(arr):
+def trapezoid_decompose(arr):
     l = []
     decompose(arr, l)
-    pl = Arr_landmarks_point_location(arr)
-    pl.locate()
     for pair in l:
         # pair is a tuple
         # pair[0] is an arrangement vertex
@@ -141,14 +146,17 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
     elif obj.is_halfedge():
         he = Halfedge()
         obj.get_halfedge(he)
+        if he.source().point().y().to_double == -50:
+            print("Here!!!!!!!!!!")
         print(f"\tHalfedge - {he.curve()}")
         assert he.direction() == ARR_RIGHT_TO_LEFT
         # test if ray needs to be added
         test_halfedge = he if is_obj_above_vertex else he.twin()
-        if test_halfedge.face().data() == FREE_SPACE_FACE:
+        if test_halfedge.face().data() != FORBIDDEN_FACE:
+            print("\t\tCalculating vertical wall")
             if compare_x(v0.point(), he.target().point()) == EQUAL:
                 # same x coordinate, just connect
-                v1 = he.target().point()
+                v1 = he.target()
                 seg = Segment_2(v0.point(), v1.point())
             else:
                 # vertical project v to the segment, split and connect
@@ -157,13 +165,11 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
                 y_top = tangent.y_at_x(v0.point().x())
                 seg = Segment_2(v0.point(), Point_2(v0.point().x(), y_top))
                 v1 = seg.target()
-    else:  # obj is a face or empty
-        f = Face()
-        obj.get_face(f)
-        print(f'Face data {f.data()}')
+        else:
+            print("\t\tSkipping - wall inside the obstacle")
     if seg is not None and v1 is not None:
         c0 = Curve_2(seg)
-        print(f'Adding {c0}')
+        print(f'\t\tAdding {c0}')
         insert(arr, c0)
 
 
