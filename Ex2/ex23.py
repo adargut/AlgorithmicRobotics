@@ -1,4 +1,5 @@
 from collections import defaultdict
+from queue import Queue
 from typing import List
 
 from arr2_epec_seg_ex import *  # Arr_overlay_traits, Arrangement_2, Point_2
@@ -16,16 +17,26 @@ def generate_path(path, robot, obstacles, destination):
     obs = [tuples_list_to_polygon_2(o) for o in obstacles]
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
+    source = (r.top_vertex())
 
     conf_space = compute_configuration_space(obs, r, d)
-    print(conf_space)
+    # print(conf_space)
+    # compute trapezoid decomposition of conf_space
     trapezoid_space = trapezoid_decompose(conf_space)
     print(trapezoid_space)
-    #build_roadmap(trapezoid_space)
-
-    # path.append(Point_2(300, 400))
-    # path.append(Point_2(300, 1000))
-    # path.append(Point_2(700, 1000))
+    # build roadmap
+    print("Performing roadmap")
+    roadmap = build_roadmap(trapezoid_space)
+    print("\tDone building roadmap")
+    # bfs on roadmap
+    print("Started bfs on roadmap")
+    roadmap_path = roadmap_bfs(source, d, roadmap, trapezoid_space)
+    for i in range(1, len(roadmap_path) - 1):
+        roadmap_path[i] = xy_to_point_2(roadmap_path[i][0], roadmap_path[i][1])
+    print(roadmap_path)
+    print("Done bfsing")
+    print("bfsing from to")
+    print(source, d)
     for vertex in trapezoid_space.vertices():
         path.append(vertex.point())
     return [e.curve() for e in trapezoid_space.halfedges()]
@@ -87,7 +98,7 @@ def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2, de
     robot_bbox = robot.bbox()
     assert isinstance(robot_bbox, Bbox_2)
 
-    offset = 0 #robot_bbox.max().to_double()
+    offset = 0  # robot_bbox.max().to_double()
     xmin = 0 - offset
     xmax = 2000 + offset
     ymin = 0 - offset
@@ -154,7 +165,7 @@ def trapezoid_decompose(arr):
         if up_curve is not None:
             verticals.append(up_curve)
     print("Done decomposing")
-    #res_arr = arr_overlay(arr, verticals)
+    # res_arr = arr_overlay(arr, verticals)
     for curve in verticals:
         insert(arr, curve)
     return arr
@@ -187,7 +198,7 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
                 # project v0 upwards
                 y_top = tangent.y_at_x(v0.point().x())
                 seg = Segment_2(v0.point(), Point_2(v0.point().x(), y_top))
-                #v1 = seg.target()
+                # v1 = seg.target()
         else:
             print("\t\tSkipping - wall inside the obstacle")
     if seg is not None:
@@ -204,6 +215,8 @@ Notes:
 Nodes of the graph are midpoints of every face in the free space, as well as midpoints of every halfedge.
 Edges are added between nodes representing incident faces.a
 """
+
+
 # Input: face in configuration space
 # Output: a list of its bounding points
 def face_to_points(face: Face) -> List[Point_2]:
@@ -219,9 +232,10 @@ def face_to_points(face: Face) -> List[Point_2]:
     assert len(points) != 0
     return points
 
+
 # Input: list of all points bounding a face
 # Output: average point of face, or centroid
-def get_face_midpoint(face: Face) -> Point_2:
+def get_face_midpoint(face: Face):
     face_points = face_to_points(face)
     midpoint_x, midpoint_y = 0, 0
 
@@ -229,15 +243,16 @@ def get_face_midpoint(face: Face) -> Point_2:
     for point in face_points:
         midpoint_x += point_2_to_xy(point)[0]
         midpoint_y += point_2_to_xy(point)[1]
-    return Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points))
+    return point_2_to_xy(Point_2(midpoint_x / len(face_points), midpoint_y / len(face_points)))
+
 
 # Input: a halfedge in the arrangement
 # Output: midpoint of halfedge
 def get_halfedge_midpoint(he: Halfedge) -> Point_2:
-    x_coord = (he.source()[0] + he.twin().source()[0]) / 2
-    y_coord = (he.source()[1] + he.twin().source()[1]) / 2
+    st = point_2_to_xy(he.source().point())
+    end = point_2_to_xy(he.target().point())
 
-    return Point_2(x_coord, y_coord)
+    return point_2_to_xy(Point_2((st[0] + end[0]) / 2, (st[1] + end[1]) / 2))
 
 
 # TODO Remove assertions before submitting
@@ -246,7 +261,7 @@ def build_roadmap(conf_space: Arrangement_2):
 
     # traverse faces of the free space
     for face in conf_space.faces():
-        if face.data() != 1: # TODO: USE CONST
+        if face.data() == FORBIDDEN_FACE or face.is_unbounded():  # TODO: USE CONST
             continue  # we only care about faces in the free space
         face_midpoint = get_face_midpoint(face)
         roadmap[face_midpoint] = []
@@ -263,6 +278,52 @@ def build_roadmap(conf_space: Arrangement_2):
             else:
                 roadmap[bounding_he_midpoint].append(face_midpoint)
     return roadmap
+
+
+def roadmap_bfs(src, dst, roadmap: defaultdict(list), free_space: Arrangement_2) -> List[Point_2]:
+    # locate features for start & end points
+    point_locator = Arr_naive_point_location(free_space)
+    src_feature = point_locator.locate(src)
+    dst_feature = point_locator.locate(dst)
+    f1, f2 = Face(), Face()
+    if src_feature.is_face():
+        src_feature.get_face(f1)
+    else:
+        pass  # no path exists, only semi-free
+    if dst_feature.is_face():
+        dst_feature.get_face(f2)
+    else:
+        pass  # only semi-free
+
+    dst_loc, src_loc = get_face_midpoint(f1), get_face_midpoint(f2)
+    assert dst_loc in roadmap and src_loc in roadmap
+
+    q = Queue()
+    visited = set()
+    fathers = {}
+    q.put(src_loc)
+
+    while not q.empty():
+        print("\tQueue is now", q.queue)
+        curr_node = q.get()
+        neighbors = roadmap[curr_node]
+
+        for neighbor in neighbors:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                q.put(neighbor)
+                fathers[neighbor] = curr_node
+
+    path = [src]
+    curr_node = dst_loc
+
+    while curr_node != src_loc:
+        path.append(curr_node)
+        curr_node = fathers[curr_node]
+    path.append(dst)
+
+    return path
+
 
 """
 TODO:
