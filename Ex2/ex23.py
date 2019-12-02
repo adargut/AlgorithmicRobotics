@@ -15,28 +15,26 @@ def generate_path(path, robot, obstacles, destination):
     assert destination is not None
     # get polygonal objects
     obs = [tuples_list_to_polygon_2(o) for o in obstacles]
+    ref_point = xy_to_point_2(robot[0][0], robot[0][1])
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
-    source = (r.top_vertex())
+    source = ref_point #(r.top_vertex())
 
-    conf_space = compute_configuration_space(obs, r, d)
-    # print(conf_space)
-    # compute trapezoid decomposition of conf_space
+    conf_space = compute_configuration_space(ref_point, obs, r, d)
+    # compute trapezoid decomposition of conf_spacet
     trapezoid_space = trapezoid_decompose(conf_space)
-    print(trapezoid_space)
     # build roadmap
-    print("Performing roadmap")
     roadmap = build_roadmap(trapezoid_space)
-    print("\tDone building roadmap")
     # bfs on roadmap
-    print("Started bfs on roadmap")
     roadmap_path = roadmap_bfs(source, d, roadmap, trapezoid_space)
     for i in range(1, len(roadmap_path) - 1):
         roadmap_path[i] = xy_to_point_2(roadmap_path[i][0], roadmap_path[i][1])
-    print(roadmap_path)
-    print("Done bfsing")
-    print("bfsing from to")
-    print(source, d)
+    # save path to file
+    with open("path0.txt", 'w') as savefile:
+        savefile.truncate(0)
+        for point in roadmap_path:
+            line = str(int(point_2_to_xy(point)[0])) + " " + str(int(point_2_to_xy(point)[1])) + "\n"
+            savefile.write(line)
     for vertex in trapezoid_space.vertices():
         path.append(vertex.point())
     return [e.curve() for e in trapezoid_space.halfedges()]
@@ -63,9 +61,11 @@ def obstacles_to_arrangement(obstacles):
     return arr
 
 
-def compute_configuration_space(obstacles: List[Polygon_2], robot: Polygon_2, destination: Point_2) -> Arrangement_2:
+def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
+                                robot: Polygon_2, destination: Point_2) -> Arrangement_2:
     # move robot top to (0, 0)
-    top_x, top_y = point_2_to_xy(robot.top_vertex())
+    ref_point = point_2_to_xy(ref_point)
+    top_x, top_y = ref_point[0], ref_point[1]#point_2_to_xy(robot.top_vertex())
     moved_robot_points = [(x - top_x, y - top_y) for (x, y) in polygon_2_to_tuples_list(robot)]
     start_robot = tuples_list_to_polygon_2(moved_robot_points)
     reflected_robot = reflect_polygon(start_robot)
@@ -323,13 +323,3 @@ def roadmap_bfs(src, dst, roadmap: defaultdict(list), free_space: Arrangement_2)
     path.append(dst)
 
     return path
-
-
-"""
-TODO:
-Use Arr_naive_point_location
-get where d and top are for start and finish
-BFS from start to finsih
-add paths for "getting on the roadmap"
-yasss
-"""
