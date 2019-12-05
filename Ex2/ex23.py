@@ -18,7 +18,7 @@ def generate_path(path, robot, obstacles, destination):
     ref_point = xy_to_point_2(robot[0][0], robot[0][1])
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
-    source = ref_point #(r.top_vertex())
+    source = ref_point  # (r.top_vertex())
 
     conf_space = compute_configuration_space(ref_point, obs, r, d)
     # compute trapezoid decomposition of conf_spacet
@@ -61,11 +61,21 @@ def obstacles_to_arrangement(obstacles):
     return arr
 
 
+def mark_free_faces(face: Face, status):
+    face.set_data(status)
+    if face.number_of_inner_ccbs() > 0:
+        for inner_ccb in face.inner_ccbs():
+            for he in inner_ccb:
+                new_face = he.twin().face()
+                mark_free_faces(new_face, not status)
+                break  # we only care about one edge for each face
+
+
 def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
                                 robot: Polygon_2, destination: Point_2) -> Arrangement_2:
     # move robot top to (0, 0)
     ref_point = point_2_to_xy(ref_point)
-    top_x, top_y = ref_point[0], ref_point[1]#point_2_to_xy(robot.top_vertex())
+    top_x, top_y = ref_point[0], ref_point[1]  # point_2_to_xy(robot.top_vertex())
     moved_robot_points = [(x - top_x, y - top_y) for (x, y) in polygon_2_to_tuples_list(robot)]
     start_robot = tuples_list_to_polygon_2(moved_robot_points)
     reflected_robot = reflect_polygon(start_robot)
@@ -76,19 +86,9 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
         obs_arr = Arrangement_2()
         msum = minkowski_sum_2(reflected_robot, obstacle)
         boundary = msum.outer_boundary()
-        assert isinstance(boundary, Polygon_2)
         insert_non_intersecting_curves(obs_arr, list(map(Curve_2, boundary.edges())))
         # set up face data for obstacle
-        obs_halfedge = list(obs_arr.edges())[0]
-        f = obs_halfedge.face()
-        assert isinstance(f, Face)
-        if f.is_unbounded():
-            f.set_data(FREE_FACE)
-            obs_halfedge.twin().face().set_data(FORBIDDEN_FACE)
-        else:
-            f.set_data(FORBIDDEN_FACE)
-            obs_halfedge.twin().face().set_data(FREE_FACE)
-
+        mark_free_faces(obs_arr.unbounded_face(), FREE_FACE)
         # overlay the new obstacle over the previous data
         arr = arr_overlay(arr, obs_arr)
         print(arr)
@@ -96,7 +96,6 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
     # Bounding Box
     bbox_arr = Arrangement_2()
     robot_bbox = robot.bbox()
-    assert isinstance(robot_bbox, Bbox_2)
 
     offset = 0  # robot_bbox.max().to_double()
     xmin = 0 - offset
@@ -113,21 +112,14 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
 
     # Bbox is a reverse obstacle - only allowed inside
     insert_non_intersecting_curves(bbox_arr, bounds)
-    bbox_halfedge = list(bbox_arr.edges())[0]
-    f = bbox_halfedge.face()
-    assert isinstance(f, Face)
-    if f.is_unbounded():
-        f.set_data(FORBIDDEN_FACE)
-        bbox_halfedge.twin().face().set_data(FREE_FACE)
-    else:
-        f.set_data(FREE_FACE)
-        bbox_halfedge.twin().face().set_data(FORBIDDEN_FACE)
+    mark_free_faces(bbox_arr.unbounded_face(), FORBIDDEN_FACE)
     arr = arr_overlay(arr, bbox_arr)
     return arr
 
 
 def arr_overlay(arr1, arr2):
     def layer(x, y):
+        print(f'Layering - {x}, {y}')
         x = 0 if x is None else x
         y = 0 if y is None else y
         return int(bool(x) or bool(y))
@@ -143,6 +135,7 @@ def arr_overlay(arr1, arr2):
 
 def trapezoid_decompose(arr):
     l = []
+    trapezoid_arr = Arrangement_2();
     decompose(arr, l)
     verticals = []
     for pair in l:
@@ -167,7 +160,8 @@ def trapezoid_decompose(arr):
     print("Done decomposing")
     # res_arr = arr_overlay(arr, verticals)
     for curve in verticals:
-        insert(arr, curve)
+        insert(trapezoid_arr, curve)
+    arr = arr_overlay(arr, trapezoid_arr)
     return arr
 
 
@@ -261,13 +255,17 @@ def build_roadmap(conf_space: Arrangement_2):
 
     # traverse faces of the free space
     for face in conf_space.faces():
-        if face.data() == FORBIDDEN_FACE or face.is_unbounded():  # TODO: USE CONST
+        if not face.is_unbounded():
+            print("\tcurrent face has data:", face.data(), "and its midpoint is", get_face_midpoint(face))
+        if face.data() == FORBIDDEN_FACE:  # TODO: USE CONST
             continue  # we only care about faces in the free space
         face_midpoint = get_face_midpoint(face)
         roadmap[face_midpoint] = []
 
         # traverse outer half edges of face
         for bounding_he in face.outer_ccb():
+            if bounding_he.twin().face().data() == FORBIDDEN_FACE:
+                continue
             # find midpoint of bounding half edge
             bounding_he_midpoint = get_halfedge_midpoint(bounding_he)
             # add graph edge from face midpoint to bounding half edge midpoint
@@ -280,7 +278,7 @@ def build_roadmap(conf_space: Arrangement_2):
     return roadmap
 
 
-def roadmap_bfs(src, dst, roadmap: defaultdict(list), free_space: Arrangement_2) -> List[Point_2]:
+def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Point_2]:
     # locate features for start & end points
     point_locator = Arr_naive_point_location(free_space)
     src_feature = point_locator.locate(src)
@@ -296,6 +294,8 @@ def roadmap_bfs(src, dst, roadmap: defaultdict(list), free_space: Arrangement_2)
         pass  # only semi-free
 
     dst_loc, src_loc = get_face_midpoint(f1), get_face_midpoint(f2)
+    print("where are they in?", dst_loc, src_loc)
+    print("and what is the roadmap?", roadmap)
     assert dst_loc in roadmap and src_loc in roadmap
 
     q = Queue()
