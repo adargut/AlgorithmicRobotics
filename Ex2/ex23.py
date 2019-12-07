@@ -1,3 +1,5 @@
+import heapq
+import math
 from collections import defaultdict
 from queue import Queue
 from typing import List
@@ -21,7 +23,7 @@ def generate_path(path, robot, obstacles, destination):
     source = ref_point
 
     conf_space = compute_configuration_space(ref_point, obs, r, d)
-    # compute trapezoid decomposition of conf_spacet
+    # compute trapezoid decomposition of conf_space
     trapezoid_space = trapezoid_decompose(conf_space)
     # build roadmap
     roadmap = build_roadmap(trapezoid_space)
@@ -242,7 +244,7 @@ def build_roadmap(conf_space: Arrangement_2):
 
     # traverse faces of the free space
     for face in conf_space.faces():
-        if face.data() == FORBIDDEN_FACE:  # TODO: USE CONST
+        if face.data() == FORBIDDEN_FACE:
             continue  # we only care about faces in the free space
         face_midpoint = get_face_midpoint(face)
         roadmap[face_midpoint] = []
@@ -282,22 +284,10 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
     if dst_loc not in roadmap or src_loc not in roadmap:
         return []  # free path does not exist
 
-    q = Queue()
-    visited = set()
-    fathers = {}
-    q.put(src_loc)
+    fathers = bfs(roadmap, src_loc)
 
-    while not q.empty():
-        curr_node = q.get()
-        if curr_node not in roadmap:
-            return []  # a free path does not exist
-        neighbors = roadmap[curr_node]
-
-        for neighbor in neighbors:
-            if neighbor not in visited:
-                visited.add(neighbor)
-                q.put(neighbor)
-                fathers[neighbor] = curr_node
+    if fathers == {}:
+        return []
 
     path = [src]
     curr_node = dst_loc
@@ -308,5 +298,50 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
             return []  # a free path does not exist
         curr_node = fathers[curr_node]
     path.append(dst)
+
+    return path
+
+
+def bfs(roadmap: dict, src_loc: Point_2) -> dict:
+    q = Queue()
+    visited = set()
+    fathers = {}
+    q.put(src_loc)
+
+    while not q.empty():
+        curr_node = q.get()
+        if curr_node not in roadmap:
+            return {}  # a free path does not exist
+        neighbors = roadmap[curr_node]
+
+        for neighbor in neighbors:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                q.put(neighbor)
+                fathers[neighbor] = curr_node
+    return fathers
+
+
+def djikstra(roadmap: dict, src_loc: Point_2) -> dict:
+    nodes = set(roadmap.keys())
+    distances = {n: float('infinity') for n in nodes}
+    distances[src_loc] = 0
+    pq = [(0, src_loc)]
+    path = {}
+
+    while len(pq) > 0:
+        current_weight, min_node = heapq.heappop(pq)
+
+        if current_weight > distances[min_node]:
+            continue
+
+        neighbors = roadmap[min_node]
+        for n in neighbors:
+            dist = squared_distance(xy_to_point_2(*min_node), xy_to_point_2(*n))
+            weight = current_weight + math.sqrt(dist.to_double())
+            if weight < distances[n]:
+                distances[n] = weight
+                heapq.heappush(pq, (weight, n))
+                path[n] = min_node
 
     return path
