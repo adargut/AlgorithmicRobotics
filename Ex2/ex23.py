@@ -279,7 +279,8 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
         pass  # only semi-free
 
     dst_loc, src_loc = get_face_midpoint(f1), get_face_midpoint(f2)
-    assert dst_loc in roadmap and src_loc in roadmap, "A free path does not exist!"
+    if dst_loc not in roadmap or src_loc not in roadmap:
+        return []  # free path does not exist
 
     q = Queue()
     visited = set()
@@ -288,7 +289,8 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
 
     while not q.empty():
         curr_node = q.get()
-        assert curr_node in roadmap, "A free path does not exist!"
+        if curr_node not in roadmap:
+            return []  # a free path does not exist
         neighbors = roadmap[curr_node]
 
         for neighbor in neighbors:
@@ -302,6 +304,8 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
 
     while curr_node != src_loc:
         path.append(curr_node)
+        if curr_node not in fathers:
+            return []  # a free path does not exist
         curr_node = fathers[curr_node]
     path.append(dst)
 
