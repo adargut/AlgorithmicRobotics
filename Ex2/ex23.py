@@ -18,7 +18,7 @@ def generate_path(path, robot, obstacles, destination):
     ref_point = xy_to_point_2(robot[0][0], robot[0][1])
     r = tuples_list_to_polygon_2(robot)
     d = xy_to_point_2(*destination)
-    source = ref_point  # (r.top_vertex())
+    source = ref_point
 
     conf_space = compute_configuration_space(ref_point, obs, r, d)
     # compute trapezoid decomposition of conf_spacet
@@ -34,10 +34,8 @@ def generate_path(path, robot, obstacles, destination):
         savefile.truncate(0)
         for point in roadmap_path:
             line = str(int(point_2_to_xy(point)[0])) + " " + str(int(point_2_to_xy(point)[1])) + "\n"
+            path.append(point)
             savefile.write(line)
-    for vertex in trapezoid_space.vertices():
-        path.append(vertex.point())
-    return [e.curve() for e in trapezoid_space.halfedges()]
 
 
 def reflect_polygon(polygon: Polygon_2) -> Polygon_2:
@@ -75,7 +73,7 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
                                 robot: Polygon_2, destination: Point_2) -> Arrangement_2:
     # move robot top to (0, 0)
     ref_point = point_2_to_xy(ref_point)
-    top_x, top_y = ref_point[0], ref_point[1]  # point_2_to_xy(robot.top_vertex())
+    top_x, top_y = ref_point[0], ref_point[1]
     moved_robot_points = [(x - top_x, y - top_y) for (x, y) in polygon_2_to_tuples_list(robot)]
     start_robot = tuples_list_to_polygon_2(moved_robot_points)
     reflected_robot = reflect_polygon(start_robot)
@@ -91,7 +89,6 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
         mark_free_faces(obs_arr.unbounded_face(), FREE_FACE)
         # overlay the new obstacle over the previous data
         arr = arr_overlay(arr, obs_arr)
-        print(arr)
 
     # Bounding Box
     bbox_arr = Arrangement_2()
@@ -119,7 +116,6 @@ def compute_configuration_space(ref_point: Point_2, obstacles: List[Polygon_2],
 
 def arr_overlay(arr1, arr2):
     def layer(x, y):
-        print(f'Layering - {x}, {y}')
         x = 0 if x is None else x
         y = 0 if y is None else y
         return int(bool(x) or bool(y))
@@ -135,7 +131,7 @@ def arr_overlay(arr1, arr2):
 
 def trapezoid_decompose(arr):
     l = []
-    trapezoid_arr = Arrangement_2();
+    trapezoid_arr = Arrangement_2()
     decompose(arr, l)
     verticals = []
     for pair in l:
@@ -144,21 +140,15 @@ def trapezoid_decompose(arr):
         # pair[1] is a pair holding the objects (vertex, halfedge, or face) above and below the vertex, that is,
         # the objects hit by the vertical walls emanating from the vertex
         v0 = pair[0]
-        print(f"Now decomposing {v0.point()}")
         below_obj, upper_obj = pair[1]
         # if the feature above the previous vertex is not the current vertex,
         # add a vertical segment towards below feature
-        print("\tBelow")
-        # TODO: restore the pair and check with previous vertex that I removed
         down_curve = add_vertical_segment(arr, v0, below_obj, False)
         if down_curve is not None:
             verticals.append(down_curve)
-        print("\tAbove")
         up_curve = add_vertical_segment(arr, v0, upper_obj, True)
         if up_curve is not None:
             verticals.append(up_curve)
-    print("Done decomposing")
-    # res_arr = arr_overlay(arr, verticals)
     for curve in verticals:
         insert(trapezoid_arr, curve)
     arr = arr_overlay(arr, trapezoid_arr)
@@ -171,17 +161,14 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
     if obj.is_vertex():
         v1 = Vertex()
         obj.get_vertex(v1)
-        print(f"\tVertex - {v1.point()}")
         seg = Segment_2(v0.point(), v1.point())
     elif obj.is_halfedge():
         he = Halfedge()
         obj.get_halfedge(he)
-        print(f"\tHalfedge - {he.curve()}")
         assert he.direction() == ARR_RIGHT_TO_LEFT
         # test if ray needs to be added
         test_halfedge = he if is_obj_above_vertex else he.twin()
         if test_halfedge.face().data() == FREE_FACE:
-            print("\t\tCalculating vertical wall")
             if compare_x(v0.point(), he.target().point()) == EQUAL:
                 # same x coordinate, just connect
                 v1 = he.target()
@@ -194,21 +181,11 @@ def add_vertical_segment(arr, v0, obj, is_obj_above_vertex):
                 seg = Segment_2(v0.point(), Point_2(v0.point().x(), y_top))
                 # v1 = seg.target()
         else:
-            print("\t\tSkipping - wall inside the obstacle")
+            pass  # Skipping - wall inside the obstacle
     if seg is not None:
         c0 = Curve_2(seg)
-        print(f'\t\tAdding {c0}')
         return c0
     return None
-
-
-"""
-Input: arrangement of trapezoidal free space
-Output: graph discretization of the free space, roadmap.
-Notes:
-Nodes of the graph are midpoints of every face in the free space, as well as midpoints of every halfedge.
-Edges are added between nodes representing incident faces.a
-"""
 
 
 # Input: face in configuration space
@@ -217,13 +194,13 @@ def face_to_points(face: Face) -> List[Point_2]:
     points = []
 
     # traverse outer components of face
-    for bounding_he in face.outer_ccb():
-        assert isinstance(bounding_he, Halfedge)
-        # append points of bounding half edges
-        new_point = bounding_he.source()
-        assert isinstance(new_point, Vertex)
-        points.append(new_point.point())
-    assert len(points) != 0
+    if face.number_of_outer_ccbs() > 0:
+        for bounding_he in face.outer_ccb():
+            assert isinstance(bounding_he, Halfedge)
+            # append points of bounding half edges
+            new_point = bounding_he.source()
+            assert isinstance(new_point, Vertex)
+            points.append(new_point.point())
     return points
 
 
@@ -231,6 +208,8 @@ def face_to_points(face: Face) -> List[Point_2]:
 # Output: average point of face, or centroid
 def get_face_midpoint(face: Face):
     face_points = face_to_points(face)
+    if len(face_points) == 0:
+        return None
     midpoint_x, midpoint_y = 0, 0
 
     # average out all points of face
@@ -249,14 +228,20 @@ def get_halfedge_midpoint(he: Halfedge) -> Point_2:
     return point_2_to_xy(Point_2((st[0] + end[0]) / 2, (st[1] + end[1]) / 2))
 
 
-# TODO Remove assertions before submitting
+"""
+Input: arrangement of trapezoidal free space
+Output: graph discretization of the free space, roadmap.
+Notes:
+Nodes of the graph are midpoints of every face in the free space, as well as midpoints of every halfedge.
+Edges are added between nodes representing incident faces.a
+"""
+
+
 def build_roadmap(conf_space: Arrangement_2):
     roadmap = defaultdict(list)
 
     # traverse faces of the free space
     for face in conf_space.faces():
-        if not face.is_unbounded():
-            print("\tcurrent face has data:", face.data(), "and its midpoint is", get_face_midpoint(face))
         if face.data() == FORBIDDEN_FACE:  # TODO: USE CONST
             continue  # we only care about faces in the free space
         face_midpoint = get_face_midpoint(face)
@@ -294,9 +279,7 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
         pass  # only semi-free
 
     dst_loc, src_loc = get_face_midpoint(f1), get_face_midpoint(f2)
-    print("where are they in?", dst_loc, src_loc)
-    print("and what is the roadmap?", roadmap)
-    assert dst_loc in roadmap and src_loc in roadmap
+    assert dst_loc in roadmap and src_loc in roadmap, "A free path does not exist!"
 
     q = Queue()
     visited = set()
@@ -304,8 +287,8 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
     q.put(src_loc)
 
     while not q.empty():
-        print("\tQueue is now", q.queue)
         curr_node = q.get()
+        assert curr_node in roadmap, "A free path does not exist!"
         neighbors = roadmap[curr_node]
 
         for neighbor in neighbors:

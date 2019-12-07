@@ -155,14 +155,9 @@ def generate_path():
   gui.clear_queue()
   path_name = gui.get_field(3)
   gp = importlib.import_module(path_name)
-  curves = gp.generate_path(ps.path, ps.robot, ps.obstacles, ps.destination)
+  gp.generate_path(ps.path, ps.robot, ps.obstacles, ps.destination)
   print("Generated path via", path_name + ".generate_path")
-  for curve in curves:
-    assert isinstance(curve, Curve_2)
-    s = point_2_to_xy(curve.source())
-    t = point_2_to_xy(curve.target())
-    gui.add_segment(s[0], s[1], t[0], t[1], QtCore.Qt.darkGreen)
-  #ps.set_up_animation()
+  ps.set_up_animation()
 
 def load_path():
   ps.path = []
