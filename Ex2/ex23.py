@@ -274,17 +274,17 @@ def roadmap_bfs(src, dst, roadmap: dict, free_space: Arrangement_2) -> List[Poin
     if src_feature.is_face():
         src_feature.get_face(f1)
     else:
-        pass  # no path exists, only semi-free
+        pass  # no path exists
     if dst_feature.is_face():
         dst_feature.get_face(f2)
     else:
-        pass  # only semi-free
+        pass  # no path exists
 
     dst_loc, src_loc = get_face_midpoint(f1), get_face_midpoint(f2)
     if dst_loc not in roadmap or src_loc not in roadmap:
         return []  # free path does not exist
 
-    fathers = bfs(roadmap, src_loc)
+    fathers = djikstra(roadmap, src_loc)
 
     if fathers == {}:
         return []
