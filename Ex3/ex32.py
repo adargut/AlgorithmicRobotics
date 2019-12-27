@@ -8,9 +8,12 @@ from collision_detection import *
 from math import sqrt
 from collections import defaultdict
 import heapq
+import tqdm
+
+from arr2_epec_seg_ex import *
 
 PI = FT(22 / 7)
-NEIGHBORS = 5
+NEIGHBORS = 15
 PLUS_INF = FT(sys.maxsize)
 MINUS_INF = FT((-1) * (sys.maxsize - 1))
 
@@ -59,8 +62,6 @@ class PRM(object):
         self.bounds = [minX, maxX, minY, maxY]
 
     def _find_k_nearest_neighbors(self, query_point: Point_3, k):
-
-        print("## SEARCHING FOR NEAREST NEIGHBORS ##")
         eps = FT(Gmpq(0.0))  # TODO maybe change epsilon?
         search_nearest = True
         sort_neighbors = True
@@ -72,17 +73,16 @@ class PRM(object):
         search = K_neighbor_search(
             self.kd_tree, query_point, k, eps, search_nearest, self.metric(), sort_neighbors)
         search.k_neighbors(lst)
-        print("For the point:\n\t", query_point, "\nThe nearest neighbors are:\n\t", lst)
-        return [lst]
+        return lst
 
     # Check if edge can be added between two milestones in roadmap
     def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(100.0))):
 
         source_copy = np.array(point_3_to_xyz(source))
-        destination_copy = np.array(destination[0])
+        destination_copy = np.array(point_3_to_xyz(destination))
         s_x, s_y, s_theta = point_3_to_xyz(source)
-        d_x, d_y, d_theta = destination[0].x(), destination[0].y(), destination[0].y()
-        x_diff, y_diff = s_x - d_x, s_y - d_y
+        d_x, d_y, d_theta = point_3_to_xyz(destination)
+        x_diff, y_diff = d_x - s_x, d_y - s_y
 
         if (clockwise and d_theta >= s_theta) or (not clockwise and d_theta < s_theta):
             theta_diff = d_theta - s_theta
@@ -107,46 +107,37 @@ class PRM(object):
 
     # Grow roadmap by adding some milestones to it
     def grow_roadmap(self):
+        samples_batch = 500
+        samples = [generate_random_point(self.bounds) for i in range(samples_batch)]
+        free_samples = [s for s in samples if self._is_point_free(s)]
+        self.kd_tree.insert(free_samples)
 
-        milestones_found = 0
-
-        while milestones_found < 50:  # self.milestones_count: FIXME
-            # Generate a random position
-            is_free_sample = False
-            while not is_free_sample:
-                curr_sample = generate_random_point(self.bounds)
-                is_free_sample = self._is_point_free(curr_sample)
-            milestones_found += 1
-            self.add_milestone_to_roadmap(curr_sample)
+        for s in free_samples:
+            self.add_milestone_to_roadmap(s)
 
         # Connect milestones found to its nearest neighbors, build edges of roadmap
-        for milestone in list(self.roadmap.vertices):
+        for milestone in tqdm.tqdm(list(self.roadmap.vertices)):
             if isinstance(milestone, tuple):  # handle edge case
                 milestone = milestone[0]
-            print("Attempting to connect new milestone to roadmap: \n\t", milestone)
             self.connect_roadmap_vertex(milestone)
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, point, threshold=FT(Gmpq(50.0))):
+    def connect_roadmap_vertex(self, point, threshold=FT(Gmpq(50.0**2))):
 
         # TODO: Maybe consider connected components efficiency?
         nearest_neighbors = self._find_k_nearest_neighbors(point, NEIGHBORS)
         # Locality test
-        nearest_node, dist = nearest_neighbors[0][0]
+        for neighbor, dist in nearest_neighbors:
+            #print(f'{neighbor} is in distance {dist} from {point}')
+            if FT(Gmpq(0.0)) < dist: # <= threshold:
+                # Attempt to connect CW and CCW edges from dest to neighbors
+                self.add_roadmap_edge(point, neighbor, dist, True)
+                self.add_roadmap_edge(point, neighbor, dist, False)
 
-        if dist > threshold:
-            pass
-        sample_is_milestone = False
-        for neighbor in nearest_neighbors[0]:
-            # Attempt to connect CW and CCW edges from dest to neighbors
-            if self.add_roadmap_edge(point, neighbor, True) or \
-                    self.add_roadmap_edge(point, neighbor, False):
-                sample_is_milestone |= True
-
-    def add_roadmap_edge(self, point, neighbor, orientation_type) -> bool:
+    def add_roadmap_edge(self, point, neighbor, dist, orientation_type) -> bool:
 
         if self._is_edge_legal(point, neighbor, orientation_type):
-            weight = 1  # self.metric(neighbor, point, orientation_type) FIXME
+            weight = sqrt(dist.to_double())  # self.metric(neighbor, point, orientation_type) FIXME
             self.roadmap.add_edge(point, neighbor, weight, orientation_type)
             return True
         return False
@@ -155,21 +146,21 @@ class PRM(object):
     def add_milestone_to_roadmap(self, point):
 
         self.roadmap.add_vertex(point)
-        self.kd_tree.insert(point)
+        #self.kd_tree.insert(point)
 
 
 ## --------------- Roadmap Graph  ------------------
 
 class RoadmapGraph(object):
     def __init__(self):
-        self.graph = defaultdict(list)
+        self.graph = defaultdict(set)
 
     def add_edge(self, source, dest, weight, orientation_type):
-        self.graph[source].append(((source, dest), weight, orientation_type))
-        self.graph[dest].append(((dest, source), weight, orientation_type))
+        self.graph[source].add(((source, dest), weight, orientation_type))
+        self.graph[dest].add(((dest, source), weight, orientation_type))
 
     def add_vertex(self, v):
-        self.graph[v] = []
+        self.graph[v] = set([])
 
     @property
     def vertices(self):
@@ -190,8 +181,8 @@ class RoadmapGraph(object):
     # Djikstra algorithm used to find shortest path on roadmap
     def djikstra(self, source) -> dict:
         distances = {n: float('infinity') for n in self.vertices}
-        distances[source] = 0
-        pq = [(0, source)]
+        distances[source] = 0.0
+        pq = [(0.0, source)]
         path = {}
 
         while len(pq) > 0:
@@ -201,7 +192,7 @@ class RoadmapGraph(object):
                 continue
 
             neighbors = self.neighbors(min_node)
-            for edge, edge_weight in neighbors:
+            for edge, edge_weight, _ in neighbors:
                 neighbor = edge[1]
                 weight = current_weight + edge_weight
                 if weight < distances[neighbor]:
@@ -263,8 +254,6 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     dest = xyz_to_point_3(dest)
     prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), Euclidean_distance)
     prm.compute_bounds()
-    prm.add_milestone_to_roadmap(source)
-    prm.add_milestone_to_roadmap(dest)
 
     idx = 0
     while idx < len(obstacles):
@@ -272,10 +261,13 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         idx += 1
 
     ### GROW PRM ###
-    while not solution_found:
-        prm.grow_roadmap()
-        path = prm.roadmap.shortest_path(source, dest)
+    prm.grow_roadmap()
+    prm.add_milestone_to_roadmap(source)
+    prm.connect_roadmap_vertex(source)
+    prm.add_milestone_to_roadmap(dest)
+    prm.connect_roadmap_vertex(dest)
+    path = prm.roadmap.shortest_path(source, dest)
 
-        if path:
-            solution_found = True
+    if path:
+        solution_found = True
     return path
