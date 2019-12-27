@@ -13,7 +13,7 @@ import tqdm
 from arr2_epec_seg_ex import *
 
 PI = FT(22 / 7)
-NEIGHBORS = 15
+NEIGHBORS = 7
 PLUS_INF = FT(sys.maxsize)
 MINUS_INF = FT((-1) * (sys.maxsize - 1))
 
@@ -107,7 +107,7 @@ class PRM(object):
 
     # Grow roadmap by adding some milestones to it
     def grow_roadmap(self):
-        samples_batch = 500
+        samples_batch = 200
         samples = [generate_random_point(self.bounds) for i in range(samples_batch)]
         free_samples = [s for s in samples if self._is_point_free(s)]
         self.kd_tree.insert(free_samples)
@@ -129,7 +129,7 @@ class PRM(object):
         # Locality test
         for neighbor, dist in nearest_neighbors:
             #print(f'{neighbor} is in distance {dist} from {point}')
-            if FT(Gmpq(0.0)) < dist: # <= threshold:
+            if FT(Gmpq(0.0)) < dist:  # <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
                 self.add_roadmap_edge(point, neighbor, dist, True)
                 self.add_roadmap_edge(point, neighbor, dist, False)
@@ -223,7 +223,7 @@ class RoadmapGraph(object):
 ## --------------- Utilility Functions  ------------------
 
 def generate_random_point(bounds):
-    minX, maxX, minY, maxY = bounds[0], bounds[1], bounds[2], bounds[3]
+    minX, maxX, minY, maxY = -1000, 1000, -1000, 1000
     rand_x_coord = random.uniform(FT.to_double(minX), FT.to_double(maxX))
     rand_y_coord = random.uniform(FT.to_double(minY), FT.to_double(maxY))
     rand_theta_coord = Fraction(int(round(16 * random.uniform(0, 44 / 7))), 16)
