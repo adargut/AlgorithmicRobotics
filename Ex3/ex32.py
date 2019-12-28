@@ -12,6 +12,7 @@ import tqdm
 import networkx as nx
 import matplotlib.pyplot as plt
 from arr2_epec_seg_ex import *
+from networkx import NetworkXNoPath
 
 PI = FT(22 / 7)
 NEIGHBORS = 11
@@ -300,7 +301,9 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     print("### FINDING PATH ###")
     print("from", source, "to", dest)
     # path = prm.roadmap.shortest_path(source, dest)
-    path = nx.shortest_path(prm.roadmap, source=s, target=d, weight='weight')
-
+    try:
+        path = nx.shortest_path(prm.roadmap, source=s, target=d, weight='weight')
+    except NetworkXNoPath:
+        path = []
     print(" ### GENERATED PATH ###\n", path)
     return prm, path
