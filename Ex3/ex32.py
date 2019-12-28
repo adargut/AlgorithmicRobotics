@@ -107,7 +107,7 @@ class PRM(object):
 
     # Grow roadmap by adding some milestones to it
     def grow_roadmap(self):
-        samples_batch = 50
+        samples_batch = 200
         samples = [generate_random_point(self.bounds) for i in range(samples_batch)]
         free_samples = [s for s in samples if self._is_point_free(s)]
         self.kd_tree.insert(free_samples)
@@ -264,6 +264,8 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         idx += 1
 
     ### GROW PRM ###
+    prm.kd_tree.insert(source)
+    prm.kd_tree.insert(dest)
     prm.grow_roadmap()
     prm.add_milestone_to_roadmap(source)
     prm.connect_roadmap_vertex(source)
