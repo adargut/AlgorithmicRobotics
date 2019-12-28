@@ -6,16 +6,18 @@ from typing import List
 from conversions import *
 from collision_detection import *
 from math import sqrt
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import heapq
 import tqdm
-
+import networkx as nx
+import matplotlib.pyplot as plt
 from arr2_epec_seg_ex import *
 
 PI = FT(22 / 7)
-NEIGHBORS = 15
+NEIGHBORS = 11
 PLUS_INF = FT(sys.maxsize)
 MINUS_INF = FT((-1) * (sys.maxsize - 1))
+SamplePoint = namedtuple('SamplePoint', ['x', 'y', 'z'])
 
 
 ## --------------- PRM  ------------------
@@ -40,7 +42,8 @@ class PRM(object):
         self.epsilon = epsilon
         self.metric = metric
         self.kd_tree = Kd_tree()
-        self.roadmap = RoadmapGraph()
+        # self.roadmap = RoadmapGraph()
+        self.roadmap = nx.DiGraph()
         self.bounds = []
 
     def _is_point_free(self, point: Point_3):
@@ -107,43 +110,47 @@ class PRM(object):
 
     # Grow roadmap by adding some milestones to it
     def grow_roadmap(self):
-        samples_batch = 200
+        samples_batch = 50
         samples = [generate_random_point(self.bounds) for i in range(samples_batch)]
-        free_samples = [s for s in samples if self._is_point_free(s)]
-        self.kd_tree.insert(free_samples)
-
-        for s in free_samples:
-            self.add_milestone_to_roadmap(s)
+        free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s))]
+        self.kd_tree.insert(list(map(xyz_to_point_3, free_samples)))
+        self.roadmap.add_nodes_from(free_samples)
+        # for s in free_samples:
+        #     self.add_milestone_to_roadmap(s)
 
         # Connect milestones found to its nearest neighbors, build edges of roadmap
-        for milestone in tqdm.tqdm(list(self.roadmap.vertices)):
+        for milestone in tqdm.tqdm(list(self.roadmap.nodes)):
             self.connect_roadmap_vertex(milestone)
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, point, threshold=FT(Gmpq(50.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(50.0 ** 2))):
 
         # TODO: Maybe consider connected components efficiency?
+        point = xyz_to_point_3(node)
         nearest_neighbors = self._find_k_nearest_neighbors(point, NEIGHBORS)
         # Locality test
         for neighbor, dist in nearest_neighbors:
             # print(f'{neighbor} is in distance {dist} from {point}')
             if FT(Gmpq(0.0)) < dist:  # <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
-                self.add_roadmap_edge(point, neighbor, dist, True)
-                self.add_roadmap_edge(point, neighbor, dist, False)
+                if not self.add_roadmap_edge(point, neighbor, dist, True):
+                    self.add_roadmap_edge(point, neighbor, dist, False)
 
     def add_roadmap_edge(self, point, neighbor, dist, orientation_type) -> bool:
-
-        if self._is_edge_legal(point, neighbor, orientation_type):
-            weight = sqrt(dist.to_double())  # self.metric(neighbor, point, orientation_type) FIXME
-            self.roadmap.add_edge(point, neighbor, weight, orientation_type)
-            return True
+        source = point_3_to_xyz(point)
+        dest = point_3_to_xyz(neighbor)
+        if not ((dest in self.roadmap.neighbors(source)) or
+                (source in self.roadmap.neighbors(dest))):
+            if self._is_edge_legal(point, neighbor, orientation_type):
+                weight = sqrt(dist.to_double())  # self.metric(neighbor, point, orientation_type) FIXME
+                self.roadmap.add_edge(source, dest, weight=weight, is_cw=orientation_type)
+                self.roadmap.add_edge(dest, source, weight=weight, is_cw=not orientation_type)
+                return True
         return False
 
     # TODO figure out threshold?
     def add_milestone_to_roadmap(self, point):
-
-        self.roadmap.add_vertex(point)
+        self.roadmap.add_node(point)
         # self.kd_tree.insert(point)
 
 
@@ -154,8 +161,10 @@ class RoadmapGraph(object):
         self.graph = defaultdict(set)
 
     def add_edge(self, source, dest, weight, orientation_type):
-        # if self.is_exists(source) and self.is_exists(dest):
-        self.graph[source].add(((source, dest), weight, orientation_type))
+        if self.is_exists(source) and self.is_exists(dest):
+            self.graph[source].add(
+                ((source, dest), (weight, orientation_type))
+            )
 
     def add_vertex(self, v):
         self.graph[v] = set([])
@@ -190,14 +199,10 @@ class RoadmapGraph(object):
                 continue
 
             neighbors = self.neighbors(min_node)
-            for edge, edge_weight, _ in neighbors:
+            for edge, edge_data in neighbors:
                 neighbor = edge[1]
+                edge_weight, edge_orientation = edge_data
                 weight = current_weight + edge_weight
-                # Fix for dictionary
-                for d in distances:
-                    if d == neighbor:
-                        neighbor = d
-
                 if weight < distances[neighbor]:
                     distances[neighbor] = weight
                     heapq.heappush(pq, (weight, neighbor))
@@ -230,7 +235,8 @@ def generate_random_point(bounds):
     rand_x_coord = random.uniform(minX, maxX)
     rand_y_coord = random.uniform(minY, maxY)
     rand_theta_coord = Fraction(int(round(16 * random.uniform(0, 44 / 7))), 16)
-    return Point_3(FT(rand_x_coord), FT(rand_y_coord), FT(float(rand_theta_coord)))
+    return SamplePoint(rand_x_coord, rand_y_coord, float(rand_theta_coord))
+    # return Point_3(FT(rand_x_coord), FT(rand_y_coord), FT(float(rand_theta_coord)))
 
 
 def point_3_to_xyz(p):
@@ -253,8 +259,8 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     solution_found = False
 
     ### INITIALIZE PRM ###
-    source = xyz_to_point_3(source)
-    dest = xyz_to_point_3(dest)
+    # source = xyz_to_point_3(source)
+    # dest = xyz_to_point_3(dest)
     prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), Euclidean_distance)
     prm.compute_bounds()
 
@@ -264,19 +270,27 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         idx += 1
 
     ### GROW PRM ###
-    prm.kd_tree.insert(source)
-    prm.kd_tree.insert(dest)
+    # prm.kd_tree.insert(source)
+    # prm.kd_tree.insert(dest)
     prm.grow_roadmap()
     prm.add_milestone_to_roadmap(source)
     prm.connect_roadmap_vertex(source)
     prm.add_milestone_to_roadmap(dest)
     prm.connect_roadmap_vertex(dest)
     print(" ### GROWN ROADMAP ###")
-    for vertex in prm.roadmap.vertices:
-        print("vertex is", vertex, "with degree:", len(prm.roadmap.graph[vertex]))
+    g = prm.roadmap
+    # conf_space_pos = {node: (node[0], node[1]) for node in g.nodes}
+    # nx.draw_networkx_nodes(source, conf_space_pos, node_color='b')
+    # nx.draw_networkx_nodes(dest, conf_space_pos, node_color='y')
+    # rest_of_the_nodes = set(g.nodes) - {source, dest}
+    # nx.draw_networkx_nodes(rest_of_the_nodes, conf_space_pos)
+    # nx.draw_networkx_edges(g.edges, conf_space_pos)
+    # plt.axis('off')
+    # plt.show()
     print("### FINDING PATH ###")
     print("from", source, "to", dest)
-    path = prm.roadmap.shortest_path(source, dest)
+    # path = prm.roadmap.shortest_path(source, dest)
+    path = nx.shortest_path(prm.roadmap, source=source, target=dest, weight='weight')
 
     if path:
         solution_found = True
