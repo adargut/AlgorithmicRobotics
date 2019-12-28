@@ -80,11 +80,8 @@ class PRM(object):
 
     # Check if edge can be added between two milestones in roadmap
     def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(100.0))):
-
-        source_copy = np.array(point_3_to_xyz(source))
-        destination_copy = np.array(point_3_to_xyz(destination))
-        s_x, s_y, s_theta = point_3_to_xyz(source)
-        d_x, d_y, d_theta = point_3_to_xyz(destination)
+        s_x, s_y, s_theta = source.x(), source.y(), source.z()
+        d_x, d_y, d_theta = destination.x(), destination.y(), destination.z()
         x_diff, y_diff = d_x - s_x, d_y - s_y
 
         if (clockwise and d_theta >= s_theta) or (not clockwise and d_theta < s_theta):
@@ -94,13 +91,14 @@ class PRM(object):
         else:
             theta_diff = d_theta + (FT(Gmpq(2.0)) * PI - s_theta)
         diff_vector = np.array([x_diff, y_diff, theta_diff])
-
+        source_vector = np.array([s_x, s_y, s_theta])
+        destination_vector = np.array([d_x, d_y, d_theta])
         # Sample nearby points on edge from source to destination, and check if they are legal
         t, h = FT(Gmpq(0.0)), FT(Gmpq(0.0))
-        curr_point = source_copy
+        curr_point = source_vector
         # curr_point starts as source and converges to destination
-        while not np.array_equal(curr_point, destination_copy) and h <= FT(Gmpq(1.0)):
-            curr_point = source_copy + h * diff_vector
+        while not np.array_equal(curr_point, destination_vector) and h <= FT(Gmpq(1.0)):
+            curr_point = source_vector + h * diff_vector
             t += FT(Gmpq(1.0))
             # partition count determines how we partition the edge from source to destination
             h = t / partition_count
@@ -139,8 +137,8 @@ class PRM(object):
     def add_roadmap_edge(self, point, neighbor, dist, orientation_type) -> bool:
         source = point_3_to_xyz(point)
         dest = point_3_to_xyz(neighbor)
-        if not ((dest in self.roadmap.neighbors(source)) or
-                (source in self.roadmap.neighbors(dest))):
+        if not ((dest in self.roadmap[source]) or
+                (source in self.roadmap[dest])):
             if self._is_edge_legal(point, neighbor, orientation_type):
                 weight = sqrt(dist.to_double())  # self.metric(neighbor, point, orientation_type) FIXME
                 self.roadmap.add_edge(source, dest, weight=weight, is_cw=orientation_type)
@@ -239,7 +237,9 @@ def generate_random_point(bounds):
     # return Point_3(FT(rand_x_coord), FT(rand_y_coord), FT(float(rand_theta_coord)))
 
 
-def point_3_to_xyz(p):
+def point_3_to_xyz(p, to_double=True):
+    if to_double:
+        return p.x().to_double(), p.y().to_double(), p.z().to_double()
     return p.x(), p.y(), p.z()
 
 
@@ -250,7 +250,16 @@ def xyz_to_point_3(xyz):
 ## --------------- Run Algorithm  ------------------
 
 def generate_path(path, length, obstacles, origin, destination):
-    path = run_algorithm(length, obstacles, 100, 1, origin, destination)
+    prm, path_points = run_algorithm(length, obstacles, 100, 1, origin, destination)
+    if len(path_points) > 0:
+        convert_sample_to_cgal = lambda sample: (FT(Gmpq(sample[0])), FT(Gmpq(sample[1])), FT(Gmpq(sample[2])))
+        prev = path_points[0]
+        path.append((*convert_sample_to_cgal(prev), True))
+        for node in path_points[1:]:
+            is_cw = prm.roadmap[prev][node]['is_cw']
+            path.append((*convert_sample_to_cgal(node), is_cw))
+            prev = node
+    print(path)
     return path
 
 
@@ -259,8 +268,8 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     solution_found = False
 
     ### INITIALIZE PRM ###
-    # source = xyz_to_point_3(source)
-    # dest = xyz_to_point_3(dest)
+    source = xyz_to_point_3(source)
+    dest = xyz_to_point_3(dest)
     prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), Euclidean_distance)
     prm.compute_bounds()
 
@@ -270,30 +279,28 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         idx += 1
 
     ### GROW PRM ###
-    # prm.kd_tree.insert(source)
-    # prm.kd_tree.insert(dest)
     prm.grow_roadmap()
-    prm.add_milestone_to_roadmap(source)
-    prm.connect_roadmap_vertex(source)
-    prm.add_milestone_to_roadmap(dest)
-    prm.connect_roadmap_vertex(dest)
+    s = point_3_to_xyz(source)
+    d = point_3_to_xyz(dest)
+    prm.roadmap.add_node(s)
+    prm.connect_roadmap_vertex(s)
+    prm.roadmap.add_node(d)
+    prm.connect_roadmap_vertex(d)
     print(" ### GROWN ROADMAP ###")
-    g = prm.roadmap
-    # conf_space_pos = {node: (node[0], node[1]) for node in g.nodes}
-    # nx.draw_networkx_nodes(source, conf_space_pos, node_color='b')
-    # nx.draw_networkx_nodes(dest, conf_space_pos, node_color='y')
-    # rest_of_the_nodes = set(g.nodes) - {source, dest}
-    # nx.draw_networkx_nodes(rest_of_the_nodes, conf_space_pos)
-    # nx.draw_networkx_edges(g.edges, conf_space_pos)
-    # plt.axis('off')
-    # plt.show()
+    if False:  # DEBUG
+        g = prm.roadmap
+        pos = nx.spring_layout(g)
+        nx.draw_networkx_nodes([s], pos, node_color='b')
+        nx.draw_networkx_nodes([d], pos, node_color='y')
+        rest_of_the_nodes = set(g.nodes) - {s, d}
+        nx.draw_networkx_nodes(rest_of_the_nodes, pos)
+        nx.draw_networkx_edges(g, pos)
+        plt.axis('off')
+        plt.show()
     print("### FINDING PATH ###")
     print("from", source, "to", dest)
     # path = prm.roadmap.shortest_path(source, dest)
-    path = nx.shortest_path(prm.roadmap, source=source, target=dest, weight='weight')
-
-    if path:
-        solution_found = True
+    path = nx.shortest_path(prm.roadmap, source=s, target=d, weight='weight')
 
     print(" ### GENERATED PATH ###\n", path)
-    return path
+    return prm, path
