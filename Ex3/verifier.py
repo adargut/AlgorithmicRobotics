@@ -149,8 +149,9 @@ class Polygons_scene():
       print(self.path[0][0], self.path[0][1], self.path[0][2])
     if check1 == False:
       print("Destination mismatch")
-      print(dx1, dy1, da)
-      print(self.path[-1][0], self.path[-1][1], self.path[-1][2])
+      print(dx1, dy1, da, "with type:", type(dx1), type(dy2), type(da))
+      print(self.path[-1][0], self.path[-1][1], self.path[-1][2], "with type:", type(self.path[-1][0]),
+            type(self.path[-1][0]), type(self.path[-1][2]))
     if check2 == False:
       print("Movement along path intersects with obstacles")
     return res

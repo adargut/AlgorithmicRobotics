@@ -175,8 +175,22 @@ def xyz_to_point_3(xyz):
 def transformed_distance(p1, p2):
     assert isinstance(p1, Point_3)
     assert isinstance(p2, Point_3)
+    dist = FT(Gmpq(0.0))
 
-    return abs(p1.x() - p2.x()) + abs(p1.y() - p2.y()) + abs(p1.z() - p2.z())
+    if p1.x() > p2.x():
+        dist += p1.x() - p2.x()
+    else:
+        dist += p2.x() - p1.x()
+    if p1.y() > p2.y():
+        dist += p1.y() - p2.y()
+    else:
+        dist += p2.y() - p1.y()
+    if p1.z() > p2.z():
+        dist += p1.z() - p2.z()
+    else:
+        dist += p2.z() - p1.z()
+
+    return dist
 
 # The following function returns the transformed distance between the query
 # point q and the point on the boundary of the rectangle r closest to q.
@@ -198,6 +212,8 @@ def min_distance_to_rectangle(q, r):
     if r.max_coord(2) < q.x():
         dist += q.x() - r.max_coord(2)
 
+    return dist
+
 
 # The following function returns the transformed distance between the query
 # point q and the point on the boundary of the rectangle r furthest to q.
@@ -218,6 +234,8 @@ def max_distance_to_rectangle(q, r):
         dist += (r.max_coord(2) - q.x())
     else:
         dist += q.x() - r.min_coord(2)
+
+    return dist
 
 
 # The following function returns the transformed distance for a value d
