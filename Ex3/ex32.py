@@ -12,7 +12,6 @@ from collections import defaultdict, namedtuple
 import heapq
 import tqdm
 import networkx as nx
-import matplotlib.pyplot as plt
 from arr2_epec_seg_ex import *
 from networkx import NetworkXNoPath
 
@@ -27,16 +26,6 @@ SamplePoint = namedtuple('SamplePoint', ['x', 'y', 'z'])
 ## --------------- PRM  ------------------
 
 class PRM(object):
-    """
-    sampling strategy = uniform?
-    * collision detection = given
-    distance metric =
-    * nearest neighbor search = kd tree
-    connection strategy = lazy evalutaion?
-    local planner
-    query phase = A*?
-    :return:
-    """
 
     def __init__(self, rod_length, obstacles: List[Polygon_2], milestones_count, epsilon, metric):
 
