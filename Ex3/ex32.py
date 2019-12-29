@@ -169,37 +169,42 @@ def xyz_to_point_3(xyz):
 # maybe consider (x, y, cos(theta), sin(theta)) instead of points and take their dist
 # or diff between angles mod 2pi?
 def transformed_distance(p1, p2):
-    phi_1, phi_2 = math.cos(p1[2]), math.sin(p1[2])
-    psi_1, psi_2 = math.cos(p2[2]), math.sin(p1[2])
-    return FT(abs(Gmpq(p1[0] * p2[0] + p1[1] * p2[1] + phi_1 * psi_1 + phi_2 * psi_2)))
+    assert isinstance(p1, Point_3)
+    assert isinstance(p2, Point_3)
+
+    return abs(p1.x() - p2.x()) + abs(p1.y() - p2.y()) + abs(p1.z() - p2.z())
+
 
 
 # The following function returns the transformed distance between the query
 # point q and the point on the boundary of the rectangle r closest to q.
 def min_distance_to_rectangle(q, r):
     assert isinstance(r, Kd_tree_rectangle)
+    assert isinstance(q, Point_3)
     return min(transformed_distance(r.max_coord(), q), transformed_distance(r.min_coord(), q))
 
 
 # The following function returns the transformed distance between the query
 # point q and the point on the boundary of the rectangle r furthest to q.
 def max_distance_to_rectangle(q, r):
-    return FT(Gmpq(1))  # replace this with your implementation
+    assert isinstance(r, Kd_tree_rectangle)
+    assert isinstance(q, Point_3)
+    return max(transformed_distance(r.max_coord(), q), transformed_distance(r.min_coord(), q))
 
 
 # The following function returns the transformed distance for a value d
 # Fo example, if d is a value computed using the Euclidean distance, the transformed distance should be d*d
 def transformed_distance_for_value(d):
-    return FT(Gmpq(1))  # replace this with your implementation
+    return d
 
 
 # The following function returns the inverse of the transformed distance for a value d
 # Fo example, if d is a sqaured distance value then its inverse should be sqrt(d)
 def inverse_of_transformed_distance_for_value(d):
-    return FT(Gmpq(1))  # replace this with your implementation
+    return d
 
 
-distance = Distance_python(transformed_distance, min_distance_to_rectangle, \
+manhattan_distance       = Distance_python(transformed_distance, min_distance_to_rectangle, \
                            max_distance_to_rectangle, transformed_distance_for_value, \
                            inverse_of_transformed_distance_for_value)
 
