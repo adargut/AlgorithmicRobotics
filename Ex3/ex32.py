@@ -15,9 +15,10 @@ from arr2_epec_seg_ex import *
 from networkx import NetworkXNoPath
 
 PI = FT(22 / 7)
-NEIGHBORS = 11
+NEIGHBORS = 15
 PLUS_INF = FT(sys.maxsize)
 MINUS_INF = FT((-1) * (sys.maxsize - 1))
+SAMPLE_BATCH = 50
 SamplePoint = namedtuple('SamplePoint', ['x', 'y', 'z'])
 
 
@@ -62,7 +63,6 @@ class PRM(object):
                 minY = min(minY, y)
                 maxX = max(maxX, x)
                 maxY = max(maxY, y)
-
         self.bounds = [minX, maxX, minY, maxY]
 
     def _find_k_nearest_neighbors(self, query_point: Point_3, k):
@@ -80,14 +80,15 @@ class PRM(object):
         return lst
 
     # Check if edge can be added between two milestones in roadmap
-    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(100.0))):
+    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(20.0))):
         s_x, s_y, s_theta = source.x(), source.y(), source.z()
         d_x, d_y, d_theta = destination.x(), destination.y(), destination.z()
         x_diff, y_diff = d_x - s_x, d_y - s_y
+        ccw = not clockwise
 
-        if (clockwise and d_theta >= s_theta) or (not clockwise and d_theta < s_theta):
+        if (ccw and d_theta >= s_theta) or (clockwise and d_theta < s_theta):
             theta_diff = d_theta - s_theta
-        elif clockwise and d_theta < s_theta:
+        elif ccw and d_theta < s_theta:
             theta_diff = FT(-1) * (s_theta + FT((Gmpq(2.0))) * PI - d_theta)
         else:
             theta_diff = d_theta + (FT(Gmpq(2.0)) * PI - s_theta)
@@ -109,9 +110,15 @@ class PRM(object):
 
     # Grow roadmap by adding some milestones to it
     def grow_roadmap(self):
-        samples_batch = 50
-        samples = [generate_random_point(self.bounds) for i in range(samples_batch)]
-        free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s))]
+
+        samples = [generate_random_point(self.bounds) for i in range(self.milestones_count)]
+        free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s)) and s]
+
+        def remove_samples(threshold=FT(Gmpq(500.0))):
+            for s in free_samples:
+                x = Point_3
+                squ
+
         self.kd_tree.insert(list(map(xyz_to_point_3, free_samples)))
         self.roadmap.add_nodes_from(free_samples)
         # for s in free_samples:
@@ -121,8 +128,12 @@ class PRM(object):
         for milestone in tqdm.tqdm(list(self.roadmap.nodes)):
             self.connect_roadmap_vertex(milestone)
 
+
+    def increment_milestone_count(self):
+        self.milestones_count *= 2
+
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(50.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(500.0 ** 2))):
 
         # TODO: Maybe consider connected components efficiency?
         point = xyz_to_point_3(node)
@@ -130,7 +141,7 @@ class PRM(object):
         # Locality test
         for neighbor, dist in nearest_neighbors:
             # print(f'{neighbor} is in distance {dist} from {point}')
-            if FT(Gmpq(0.0)) < dist:  # <= threshold:
+            if True: #(Gmpq(0.0)) < dist <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
                 if not self.add_roadmap_edge(point, neighbor, dist, True):
                     self.add_roadmap_edge(point, neighbor, dist, False)
@@ -231,9 +242,9 @@ class RoadmapGraph(object):
 
 def generate_random_point(bounds):
     minX, maxX, minY, maxY = -1000.0, 1000.0, -1000.0, 1000.0
-    rand_x_coord = random.uniform(minX, maxX)
-    rand_y_coord = random.uniform(minY, maxY)
-    rand_theta_coord = Fraction(int(round(16 * random.uniform(0, 44 / 7))), 16)
+    rand_x_coord = np.random.uniform(minX, maxX) #random.uniform(minX, maxX)
+    rand_y_coord = np.random.uniform(minY, maxY)
+    rand_theta_coord = Fraction(int(round(16 * np.random.uniform(0, 44 / 7))), 16)
     return SamplePoint(rand_x_coord, rand_y_coord, float(rand_theta_coord))
     # return Point_3(FT(rand_x_coord), FT(rand_y_coord), FT(float(rand_theta_coord)))
 
@@ -248,10 +259,52 @@ def xyz_to_point_3(xyz):
     return Point_3(FT(Gmpq(xyz[0])), FT(Gmpq(xyz[1])), FT(Gmpq(xyz[2])))
 
 
+## --------------- Custom Metric  ------------------ FIXME
+
+# The following function returns the transformed distance between two points
+# (for Euclidean distance the transformed distance is the squared distance)
+# maybe consider (x, y, cos(theta), sin(theta)) instead of points and take their dist
+# or diff between angles mod 2pi?
+def transformed_distance(p1, p2):
+    phi_1, phi_2 = math.cos(p1[2]), math.sin(p1[2])
+    psi_1, psi_2 = math.cos(p2[2]), math.sin(p1[2])
+    return FT(abs(Gmpq(p1[0] * p2[0] + p1[1] * p2[1] + phi_1 * psi_1 + phi_2 * psi_2)))
+
+
+# The following function returns the transformed distance between the query
+# point q and the point on the boundary of the rectangle r closest to q.
+def min_distance_to_rectangle(q, r):
+    assert isinstance(r, Kd_tree_rectangle)
+    return min(transformed_distance(r.max_coord(), q), transformed_distance(r.min_coord(), q))
+
+
+# The following function returns the transformed distance between the query
+# point q and the point on the boundary of the rectangle r furthest to q.
+def max_distance_to_rectangle(q, r):
+    return FT(Gmpq(1))  # replace this with your implementation
+
+
+# The following function returns the transformed distance for a value d
+# Fo example, if d is a value computed using the Euclidean distance, the transformed distance should be d*d
+def transformed_distance_for_value(d):
+    return FT(Gmpq(1))  # replace this with your implementation
+
+
+# The following function returns the inverse of the transformed distance for a value d
+# Fo example, if d is a sqaured distance value then its inverse should be sqrt(d)
+def inverse_of_transformed_distance_for_value(d):
+    return FT(Gmpq(1))  # replace this with your implementation
+
+
+distance = Distance_python(transformed_distance, min_distance_to_rectangle, \
+                           max_distance_to_rectangle, transformed_distance_for_value, \
+                           inverse_of_transformed_distance_for_value)
+
+
 ## --------------- Run Algorithm  ------------------
 
 def generate_path(path, length, obstacles, origin, destination):
-    prm, path_points = run_algorithm(length, obstacles, 100, 1, origin, destination)
+    prm, path_points = run_algorithm(length, obstacles, 16, 1, origin, destination)
     if len(path_points) > 0:
         convert_sample_to_cgal = lambda sample: (FT(Gmpq(sample[0])), FT(Gmpq(sample[1])), FT(Gmpq(sample[2])))
         prev = path_points[0]
@@ -271,39 +324,57 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     ### INITIALIZE PRM ###
     source = xyz_to_point_3(source)
     dest = xyz_to_point_3(dest)
+    s = point_3_to_xyz(source)
+    d = point_3_to_xyz(dest)
+
     prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), Euclidean_distance)
     prm.compute_bounds()
 
-    idx = 0
-    while idx < len(obstacles):
-        obstacles[idx] = tuples_list_to_polygon_2(obstacles[idx])
-        idx += 1
-
-    ### GROW PRM ###
-    prm.grow_roadmap()
-    s = point_3_to_xyz(source)
-    d = point_3_to_xyz(dest)
     prm.roadmap.add_node(s)
     prm.connect_roadmap_vertex(s)
     prm.roadmap.add_node(d)
     prm.connect_roadmap_vertex(d)
-    print(" ### GROWN ROADMAP ###")
-    if False:  # DEBUG
-        g = prm.roadmap
-        pos = nx.spring_layout(g)
-        nx.draw_networkx_nodes([s], pos, node_color='b')
-        nx.draw_networkx_nodes([d], pos, node_color='y')
-        rest_of_the_nodes = set(g.nodes) - {s, d}
-        nx.draw_networkx_nodes(rest_of_the_nodes, pos)
-        nx.draw_networkx_edges(g, pos)
-        plt.axis('off')
-        plt.show()
-    print("### FINDING PATH ###")
-    print("from", source, "to", dest)
-    # path = prm.roadmap.shortest_path(source, dest)
-    try:
-        path = nx.shortest_path(prm.roadmap, source=s, target=d, weight='weight')
-    except NetworkXNoPath:
-        path = []
-    print(" ### GENERATED PATH ###\n", path)
+
+    epoch = 0
+    ### GROW PRM ###
+    while not solution_found:
+        idx = 0
+        while idx < len(obstacles):
+            obstacles[idx] = tuples_list_to_polygon_2(obstacles[idx])
+            idx += 1
+
+        epoch += 1
+        print("### EPOCH NUMBER", epoch, "###")
+        prm.grow_roadmap()
+        print("\t### GROWNING ROADMAP ###")
+        if False:  # DEBUG
+            g = prm.roadmap
+            pos = nx.spring_layout(g)
+            nx.draw_networkx_nodes([s], pos, node_color='b')
+            nx.draw_networkx_nodes([d], pos, node_color='y')
+            rest_of_the_nodes = set(g.nodes) - {s, d}
+            nx.draw_networkx_nodes(rest_of_the_nodes, pos)
+            nx.draw_networkx_edges(g, pos)
+            # plt.axis('off')
+            plt.show()
+        print("\t\tSuccessfully added", prm.milestones_count,  "new milestones. "
+                                                               "tree size is now:",
+                                                               len([p for p in prm.kd_tree.points()]),
+                                                               "num of edges:", len(prm.roadmap.edges))
+        prm.increment_milestone_count()
+        print("\t### FINDING PATH ###")
+        print("\t\tfrom", source, "to", dest)
+        try:
+            path = nx.shortest_path(prm.roadmap, source=s, target=d, weight='weight')
+        except NetworkXNoPath:
+            path = []
+        print("\t### ATTEMPTING TO GENERATE PATH... ##")
+        if path:
+            solution_found = True
+        idx = 0
+        while idx < len(obstacles):
+            obstacles[idx] = polygon_2_to_tuples_list(obstacles[idx])
+            idx += 1
+
+    print("### GENERATED PATH SUCCESSFULLY ###\n", path)
     return prm, path
