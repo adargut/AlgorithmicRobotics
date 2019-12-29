@@ -1,5 +1,7 @@
 import random
 import sys
+from time import time
+
 import numpy as np
 from fractions import Fraction
 from typing import List
@@ -44,7 +46,6 @@ class PRM(object):
         self.epsilon = epsilon
         self.metric = metric
         self.kd_tree = Kd_tree()
-        # self.roadmap = RoadmapGraph()
         self.roadmap = nx.DiGraph()
         self.bounds = []
 
@@ -66,7 +67,7 @@ class PRM(object):
         self.bounds = [minX, maxX, minY, maxY]
 
     def _find_k_nearest_neighbors(self, query_point: Point_3, k):
-        eps = FT(Gmpq(0.0))  # TODO maybe change epsilon?
+        eps = FT(Gmpq(1.0))  # TODO maybe change epsilon?
         search_nearest = True
         sort_neighbors = True
         lst = []
@@ -80,7 +81,7 @@ class PRM(object):
         return lst
 
     # Check if edge can be added between two milestones in roadmap
-    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(20.0))):
+    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(50.0))):
         s_x, s_y, s_theta = source.x(), source.y(), source.z()
         d_x, d_y, d_theta = destination.x(), destination.y(), destination.z()
         x_diff, y_diff = d_x - s_x, d_y - s_y
@@ -116,8 +117,6 @@ class PRM(object):
 
         self.kd_tree.insert(list(map(xyz_to_point_3, free_samples)))
         self.roadmap.add_nodes_from(free_samples)
-        # for s in free_samples:
-        #     self.add_milestone_to_roadmap(s)
 
         # Connect milestones found to its nearest neighbors, build edges of roadmap
         for milestone in tqdm.tqdm(list(self.roadmap.nodes)):
@@ -128,7 +127,7 @@ class PRM(object):
         self.milestones_count *= 2
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(250.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(1000.0 ** 2))):
 
         # TODO: Maybe consider connected components efficiency?
         point = xyz_to_point_3(node)
@@ -156,7 +155,6 @@ class PRM(object):
     # TODO figure out threshold?
     def add_milestone_to_roadmap(self, point):
         self.roadmap.add_node(point)
-        # self.kd_tree.insert(point)
 
 
 ## --------------- Roadmap Graph  ------------------
@@ -236,12 +234,12 @@ class RoadmapGraph(object):
 ## --------------- Utilility Functions  ------------------
 
 def generate_random_point(bounds):
-    minX, maxX, minY, maxY = -1000.0, 1000.0, -1000.0, 1000.0
-    rand_x_coord = np.random.uniform(minX, maxX) #random.uniform(minX, maxX)
-    rand_y_coord = np.random.uniform(minY, maxY)
-    rand_theta_coord = Fraction(int(round(16 * np.random.uniform(0, 44 / 7))), 16)
+    minX, maxX, minY, maxY = bounds
+    rand_x_coord = np.random.uniform(FT.to_double(minX), FT.to_double(maxX))
+    rand_y_coord = np.random.uniform(FT.to_double(minY), FT.to_double(maxY))
+    rand_theta_coord = np.random.uniform(0, FT.to_double(PI))
+    # rand_theta_coord = Fraction(int(round(16 * np.random.uniform(0, 44 / 7))), 16)
     return SamplePoint(rand_x_coord, rand_y_coord, float(rand_theta_coord))
-    # return Point_3(FT(rand_x_coord), FT(rand_y_coord), FT(float(rand_theta_coord)))
 
 
 def point_3_to_xyz(p, to_double=True):
@@ -299,7 +297,7 @@ distance = Distance_python(transformed_distance, min_distance_to_rectangle, \
 ## --------------- Run Algorithm  ------------------
 
 def generate_path(path, length, obstacles, origin, destination):
-    prm, path_points = run_algorithm(length, obstacles, 16, 1, origin, destination)
+    prm, path_points = run_algorithm(length, obstacles, 100, 1, origin, destination)
     if len(path_points) > 0:
         convert_sample_to_cgal = lambda sample: (FT(Gmpq(sample[0])), FT(Gmpq(sample[1])), FT(Gmpq(sample[2])))
         prev = path_points[0]
@@ -330,6 +328,7 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     prm.roadmap.add_node(d)
     prm.connect_roadmap_vertex(d)
 
+    start_time = time()
     epoch = 0
     ### GROW PRM ###
     while not solution_found:
@@ -342,18 +341,8 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         print("### EPOCH NUMBER", epoch, "###")
         prm.grow_roadmap()
         print("\t### GROWNING ROADMAP ###")
-        if False:  # DEBUG
-            g = prm.roadmap
-            pos = nx.spring_layout(g)
-            nx.draw_networkx_nodes([s], pos, node_color='b')
-            nx.draw_networkx_nodes([d], pos, node_color='y')
-            rest_of_the_nodes = set(g.nodes) - {s, d}
-            nx.draw_networkx_nodes(rest_of_the_nodes, pos)
-            nx.draw_networkx_edges(g, pos)
-            # plt.axis('off')
-            plt.show()
-        print("\t\tSuccessfully added", prm.milestones_count,  "new milestones. "
-                                                               "tree size is now:",
+        print("\t\tSuccessfully added", prm.milestones_count,  "new samples. "
+                                                               "Kd-tree size is now:",
                                                                len([p for p in prm.kd_tree.points()]),
                                                                "num of edges:", len(prm.roadmap.edges))
         prm.increment_milestone_count()
@@ -366,10 +355,12 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         print("\t### ATTEMPTING TO GENERATE PATH... ##")
         if path:
             solution_found = True
+
         idx = 0
         while idx < len(obstacles):
             obstacles[idx] = polygon_2_to_tuples_list(obstacles[idx])
             idx += 1
 
-    print("### GENERATED PATH SUCCESSFULLY ###")
+    end_time = time()
+    print("### SUCCESS: GENERATED PATH IN", end_time - start_time, "SECONDS ###")
     return prm, path
