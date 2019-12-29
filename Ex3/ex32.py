@@ -61,10 +61,11 @@ class PRM(object):
         if not query_point:
             return []
 
-        search = K_neighbor_search(
+        search = K_neighbor_search_python(
             self.kd_tree, query_point, k, eps, search_nearest, self.metric, sort_neighbors)
         search.k_neighbors(lst)
         return lst
+
 
     # Check if edge can be added between two milestones in roadmap
     def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(50.0))):
@@ -120,7 +121,6 @@ class PRM(object):
         nearest_neighbors = self._find_k_nearest_neighbors(point, NEIGHBORS)
         # Locality test
         for neighbor, dist in nearest_neighbors:
-            # print(f'{neighbor} is in distance {dist} from {point}')
             if FT((Gmpq(0.0))) < dist <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
                 if not self.add_roadmap_edge(point, neighbor, dist, True):
@@ -183,18 +183,40 @@ def transformed_distance(p1, p2):
 def min_distance_to_rectangle(q, r):
     assert isinstance(r, Kd_tree_rectangle)
     assert isinstance(q, Point_3)
+    dist = FT(Gmpq(0.0))
 
-    return min(transformed_distance(r.max_coord(), q), transformed_distance(r.min_coord(), q))
-
+    if r.min_coord(0) > q.x():
+        dist += r.min_coord(0) - q.x()
+    if r.max_coord(0) < q.x():
+        dist += q.x() - r.max_coord(0)
+    if r.min_coord(1) > q.x():
+        dist += r.min_coord(1) - q.x()
+    if r.max_coord(1) < q.x():
+        dist += q.x() - r.max_coord(1)
+    if r.min_coord(2) > q.x():
+        dist += r.min_coord(2) - q.x()
+    if r.max_coord(2) < q.x():
+        dist += q.x() - r.max_coord(2)
 
 # The following function returns the transformed distance between the query
 # point q and the point on the boundary of the rectangle r furthest to q.
 def max_distance_to_rectangle(q, r):
     assert isinstance(r, Kd_tree_rectangle)
     assert isinstance(q, Point_3)
+    dist = FT(Gmpq(0.0))
 
-    return max(transformed_distance(r.max_coord(), q), transformed_distance(r.min_coord(), q))
-
+    if (r.max_coord(0) - q.x()) >  (q.x() - r.min_coord(0)):
+        dist += (r.max_coord(0) - q.x())
+    else:
+        dist += q.x() - r.min_coord(1)
+    if (r.max_coord(1) - q.x()) >  (q.x() - r.min_coord(1)):
+        dist += (r.max_coord(1) - q.x())
+    else:
+        dist += q.x() - r.min_coord(1)
+    if (r.max_coord(2) - q.x()) >  (q.x() - r.min_coord(2)):
+        dist += (r.max_coord(2) - q.x())
+    else:
+        dist += q.x() - r.min_coord(2)
 
 # The following function returns the transformed distance for a value d
 # Fo example, if d is a value computed using the Euclidean distance, the transformed distance should be d*d
@@ -229,6 +251,7 @@ def generate_path(path, length, obstacles, origin, destination):
             is_cw = prm.roadmap[prev][node]['is_cw']
             path.append((*convert_sample_to_cgal(node), is_cw))
             prev = node
+    # Fix to convert last coordinate
     path[-1] = path[-1][0], path[-1][1], FT(Gmpq(save_dest[2])), path[-1][3]
     return path
 
@@ -244,7 +267,7 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
     s = point_3_to_xyz(source)
     d = point_3_to_xyz(dest)
 
-    prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), Euclidean_distance())
+    prm = PRM(rod_length, obstacles, milestones_count, FT(Gmpq(epsilon)), manhattan_distance)
     prm.compute_bounds()
 
     prm.roadmap.add_node(s)
