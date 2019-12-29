@@ -1,9 +1,6 @@
-import random
 import sys
 from time import time
-
 import numpy as np
-from fractions import Fraction
 from typing import List
 from conversions import *
 from collision_detection import *
@@ -145,81 +142,6 @@ class PRM(object):
     def add_milestone_to_roadmap(self, point):
         self.roadmap.add_node(point)
 
-
-## --------------- Roadmap Graph  ------------------
-
-class RoadmapGraph(object):
-    def __init__(self):
-        self.graph = defaultdict(set)
-
-    def add_edge(self, source, dest, weight, orientation_type):
-        if self.is_exists(source) and self.is_exists(dest):
-            self.graph[source].add(
-                ((source, dest), (weight, orientation_type))
-            )
-
-    def add_vertex(self, v):
-        self.graph[v] = set([])
-
-    @property
-    def vertices(self):
-        return self.graph.keys()
-
-    @property
-    def edges(self):
-        return self.graph.values()
-
-    def is_exists(self, node):
-        return node in self.vertices
-
-    def neighbors(self, v):
-        if self.is_exists(v):
-            return self.graph[v]
-
-    # TODO maybe use A*
-    # Djikstra algorithm used to find shortest path on roadmap
-    def djikstra(self, source) -> dict:
-        distances = {n: float('infinity') for n in self.vertices}
-        distances[source] = 0.0
-        pq = [(0.0, source)]
-        path = {}
-
-        while len(pq) > 0:
-            current_weight, min_node = heapq.heappop(pq)
-
-            if current_weight > distances[min_node]:
-                continue
-
-            neighbors = self.neighbors(min_node)
-            for edge, edge_data in neighbors:
-                neighbor = edge[1]
-                edge_weight, edge_orientation = edge_data
-                weight = current_weight + edge_weight
-                if weight < distances[neighbor]:
-                    distances[neighbor] = weight
-                    heapq.heappush(pq, (weight, neighbor))
-                    path[neighbor] = min_node
-
-        return path
-
-    # Get shortest path from Djikstra
-    def shortest_path(self, source, dest):
-        fathers = self.djikstra(source)
-        if fathers == {}:
-            return []
-
-        path = [source]
-        curr_node = dest
-
-        while curr_node != source:
-            path.append(curr_node)
-            if curr_node not in fathers:
-                return []  # a free path does not exist
-            curr_node = fathers[curr_node]
-        path.append(dest)
-        return path
-
-
 ## --------------- Utilility Functions  ------------------
 
 def generate_random_point(bounds):
@@ -227,7 +149,6 @@ def generate_random_point(bounds):
     rand_x_coord = np.random.uniform(FT.to_double(minX), FT.to_double(maxX))
     rand_y_coord = np.random.uniform(FT.to_double(minY), FT.to_double(maxY))
     rand_theta_coord = np.random.uniform(0, FT.to_double(PI))
-    # rand_theta_coord = Fraction(int(round(16 * np.random.uniform(0, 44 / 7))), 16)
     return SamplePoint(rand_x_coord, rand_y_coord, float(rand_theta_coord))
 
 
@@ -295,7 +216,6 @@ def generate_path(path, length, obstacles, origin, destination):
             is_cw = prm.roadmap[prev][node]['is_cw']
             path.append((*convert_sample_to_cgal(node), is_cw))
             prev = node
-    print(path)
     return path
 
 
@@ -329,7 +249,7 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
         epoch += 1
         print("### EPOCH NUMBER", epoch, "###")
         prm.grow_roadmap()
-        print("\t### GROWNING ROADMAP ###")
+        print("\t### GROWING ROADMAP ###")
         print("\t\tSuccessfully added", prm.milestones_count,  "new samples. "
                                                                "Kd-tree size is now:",
                                                                len([p for p in prm.kd_tree.points()]),
@@ -352,4 +272,5 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
 
     end_time = time()
     print("### SUCCESS: GENERATED PATH IN", end_time - start_time, "SECONDS ###")
+    print(path)
     return prm, path
