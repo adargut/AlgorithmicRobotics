@@ -112,12 +112,7 @@ class PRM(object):
     def grow_roadmap(self):
 
         samples = [generate_random_point(self.bounds) for i in range(self.milestones_count)]
-        free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s)) and s]
-
-        def remove_samples(threshold=FT(Gmpq(500.0))):
-            for s in free_samples:
-                x = Point_3
-                squ
+        free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s))]
 
         self.kd_tree.insert(list(map(xyz_to_point_3, free_samples)))
         self.roadmap.add_nodes_from(free_samples)
@@ -133,7 +128,7 @@ class PRM(object):
         self.milestones_count *= 2
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(500.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(250.0 ** 2))):
 
         # TODO: Maybe consider connected components efficiency?
         point = xyz_to_point_3(node)
@@ -141,7 +136,7 @@ class PRM(object):
         # Locality test
         for neighbor, dist in nearest_neighbors:
             # print(f'{neighbor} is in distance {dist} from {point}')
-            if True: #(Gmpq(0.0)) < dist <= threshold:
+            if FT((Gmpq(0.0))) < dist <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
                 if not self.add_roadmap_edge(point, neighbor, dist, True):
                     self.add_roadmap_edge(point, neighbor, dist, False)
@@ -376,5 +371,5 @@ def run_algorithm(rod_length, obstacles: List[Polygon_2], milestones_count, epsi
             obstacles[idx] = polygon_2_to_tuples_list(obstacles[idx])
             idx += 1
 
-    print("### GENERATED PATH SUCCESSFULLY ###\n", path)
+    print("### GENERATED PATH SUCCESSFULLY ###")
     return prm, path
