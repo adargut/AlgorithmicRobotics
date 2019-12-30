@@ -33,6 +33,7 @@ class PRM(object):
         self.kd_tree = Kd_tree()
         self.roadmap = nx.DiGraph()
         self.bounds = []
+        self.unionfinder = nx.utils.UnionFind()
 
     def _is_point_free(self, point: Point_3):
 
@@ -106,7 +107,6 @@ class PRM(object):
 
         samples = [generate_random_point(self.bounds) for i in range(self.milestones_count)]
         free_samples = [s for s in samples if self._is_point_free(xyz_to_point_3(s))]
-
         self.kd_tree.insert(list(map(xyz_to_point_3, free_samples)))
         self.roadmap.add_nodes_from(free_samples)
 
@@ -119,24 +119,21 @@ class PRM(object):
         self.milestones_count *= 2
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(1000.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(500.0 ** 2))):
 
         point = xyz_to_point_3(node)
         nearest_neighbors = self._find_k_nearest_neighbors(point, NEIGHBORS)
-        components = nx.algorithms.strongly_connected_components(self.roadmap)
-        component = None
-        for component in components:
-            if point in component:
-                break
+        # Optimize by using union find
         for p in nearest_neighbors:
-            if p in component:
+            if self.unionfinder[p] == self.unionfinder[node]:
                 nearest_neighbors.remove(p)
+            self.unionfinder.union(p, node)
         # Locality test
         for neighbor, dist in nearest_neighbors:
             if FT((Gmpq(0.0))) < dist <= threshold:
                 # Attempt to connect CW and CCW edges from dest to neighbors
-                if not self.add_roadmap_edge(point, neighbor, dist, True):
-                    self.add_roadmap_edge(point, neighbor, dist, False)
+                self.add_roadmap_edge(point, neighbor, dist, True)
+                self.add_roadmap_edge(point, neighbor, dist, False)
 
     def add_roadmap_edge(self, point, neighbor, dist, orientation_type) -> bool:
 
@@ -159,6 +156,7 @@ class PRM(object):
 ## --------------- Utilility Functions  ------------------
 
 def generate_random_point(bounds):
+
     minX, maxX, minY, maxY = bounds
     rand_x_coord = np.random.uniform(FT.to_double(minX), FT.to_double(maxX))
     rand_y_coord = np.random.uniform(FT.to_double(minY), FT.to_double(maxY))
@@ -167,12 +165,14 @@ def generate_random_point(bounds):
 
 
 def point_3_to_xyz(p, to_double=True):
+
     if to_double:
         return p.x().to_double(), p.y().to_double(), p.z().to_double()
     return p.x(), p.y(), p.z()
 
 
 def xyz_to_point_3(xyz):
+
     return Point_3(FT(Gmpq(xyz[0])), FT(Gmpq(xyz[1])), FT(Gmpq(xyz[2])))
 
 
