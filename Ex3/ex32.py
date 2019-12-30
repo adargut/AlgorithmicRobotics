@@ -119,10 +119,18 @@ class PRM(object):
         self.milestones_count *= 2
 
     # Connect a roadmap vertex to its k nearest neighbors
-    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(100000.0 ** 2))):
+    def connect_roadmap_vertex(self, node: SamplePoint, threshold=FT(Gmpq(1000.0 ** 2))):
 
         point = xyz_to_point_3(node)
         nearest_neighbors = self._find_k_nearest_neighbors(point, NEIGHBORS)
+        components = nx.algorithms.strongly_connected_components(self.roadmap)
+        component = None
+        for component in components:
+            if point in component:
+                break
+        for p in nearest_neighbors:
+            if p in component:
+                nearest_neighbors.remove(p)
         # Locality test
         for neighbor, dist in nearest_neighbors:
             if FT((Gmpq(0.0))) < dist <= threshold:
