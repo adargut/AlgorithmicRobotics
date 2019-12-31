@@ -73,7 +73,7 @@ class PRM(object):
         return lst
 
     # Check if edge can be added between two milestones in roadmap
-    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, partition_count=FT(Gmpq(50.0))):
+    def _is_edge_legal(self, source: Point_3, destination: Point_3, clockwise: bool, dist):
 
         s_x, s_y, s_theta = source.x(), source.y(), source.z()
         d_x, d_y, d_theta = destination.x(), destination.y(), destination.z()
@@ -86,9 +86,13 @@ class PRM(object):
             theta_diff = FT(-1) * (s_theta + FT((Gmpq(2.0))) * PI - d_theta)
         else:
             theta_diff = d_theta + (FT(Gmpq(2.0)) * PI - s_theta)
-        diff_vector = np.array([x_diff, y_diff, theta_diff])
+
         source_vector = np.array([s_x, s_y, s_theta])
         destination_vector = np.array([d_x, d_y, d_theta])
+        diff_vector = np.array([x_diff, y_diff, theta_diff])
+        dist = x_diff * x_diff + y_diff * y_diff + theta_diff * theta_diff * self.rod_length
+        dist = sqrt(FT.to_double(dist))
+        partition_count = FT(dist) / self.epsilon
         # Sample nearby points on edge from source to destination, and check if they are legal
         t, h = FT(Gmpq(0.0)), FT(Gmpq(0.0))
         curr_point = source_vector
@@ -141,7 +145,7 @@ class PRM(object):
         dest = point_3_to_xyz(neighbor)
         if not ((dest in self.roadmap[source]) or
                 (source in self.roadmap[dest])):
-            if self._is_edge_legal(point, neighbor, orientation_type):
+            if self._is_edge_legal(point, neighbor, orientation_type, sqrt(dist.to_double())):
                 weight = sqrt(dist.to_double())
                 self.roadmap.add_edge(source, dest, weight=weight, is_cw=orientation_type)
                 self.roadmap.add_edge(dest, source, weight=weight, is_cw=not orientation_type)
