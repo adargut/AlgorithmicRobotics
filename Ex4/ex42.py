@@ -48,7 +48,7 @@ class Planner(object):
         lst = []
         search.k_neighbors(lst)
 
-    def _is_edge_legal(self, source, target):
+    def _is_collision_free(self, source, target):
         raise NotImplemented
 
     def generate_path(self, destinations):
@@ -61,7 +61,7 @@ class Planner(object):
             rand = self._get_free_sample()
             near = self._find_k_nearest_neighbors(rand, 1)
             new = self._steer(near, rand, eta)
-            if self._is_edge_legal(near, new):
+            if self._is_collision_free(near, new):
                 self._graph.add_node(new)
                 self._graph.add_edge(near, new)
 
@@ -78,7 +78,7 @@ class Planner(object):
             rand_point = self._get_free_sample()
             near = self._find_k_nearest_neighbors(rand_point, 1)
             new_point = self._steer(near, rand_point, eta)
-            if self._is_edge_legal(near, new_point):
+            if self._is_collision_free(near, new_point):
                 V = self._graph.number_of_nodes()
                 # new_parent = self._find_best_new_parent(new_point, r(V))
                 neighbors = NEAR(new_point, V, min(radius(V), eta))
@@ -86,7 +86,7 @@ class Planner(object):
                 min_point = near
                 min_cost = COST(near) + squared_distance(new_point, near)
                 for near in neighbors:
-                    if self._is_edge_legal(near, new_point):
+                    if self._is_collision_free(near, new_point):
                         curr_cost = COST(near) + squared_distance(new_point, near)
                         if curr_cost < min_cost:
                             min_point = near
@@ -94,7 +94,7 @@ class Planner(object):
                 self._graph.add_edge(min_point, new_point)
                 # rewire the new parent
                 for near in neighbors:
-                    if self._is_edge_legal(near, new_point):
+                    if self._is_collision_free(near, new_point):
                         if COST(new_point) + squared_distance(new_point, near) < COST(near):
                             parent = [self._graph.predecessors(near)][0]
                             self._graph.remove_edge(parent, near)
@@ -126,10 +126,14 @@ def generate_path(path, robots, obstacles, destination):
 
 """
 TODO:
-1. Import PRM
-    Change 3 dimensional space to 4 dimensional space
-    Write a a new collision detection
-    
-2. Use RRT*?
+1. Use a 4 dimesnsional space for the space
+    Kd tree, Distance, etc
+2. Write a proper collision detection
+    transform 4d point to 2 2d points
+    for each check with obstacles
+    UNDER ASSUMPTION OF SIMULTANEOUS MOVEMENT AND FIXED SPEED
+    check if paths collide with each other
+3. NEAR = get nearest neighbors in that radius!
+4. COST = cost to get to point, distance in 4d?
     
 """
