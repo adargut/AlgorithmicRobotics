@@ -1,3 +1,5 @@
+from typing import Tuple
+
 from arr2_epec_seg_ex import *
 import networkx as nx
 import math
@@ -5,6 +7,7 @@ import random
 import numpy as np
 import linear_path_intersection_test
 import tqdm
+from ms_polygon_segment import minkowski_sum_polygon_point
 
 N = 100
 
@@ -12,9 +15,11 @@ N = 100
 class Planner(object):
     def __init__(self, robots, obstacles, destinations):
         self.robots = list(map(Polygon_2, robots))
-        self.obstacles = Polygon_set_2()
-        self.obstacles.insert_polygons(list(map(Polygon_2, obstacles)))
-        
+        self.obstacles = list(map(Polygon_2, obstacles))
+        self._polygon_set = Polygon_set_2()
+        # for o in self.obstacles:
+        #     self._polygon_set.jo
+        self._polygon_set.join_polygons(self.obstacles)
         self.destinations = destinations
         self._kd_tree = Kd_tree()
         self._neighbors_buffer = []
@@ -42,7 +47,7 @@ class Planner(object):
         search_nearest = True  # set this value to False in order to search farthest
         sort_neighbors = False  # set this value to True in order to obtain the neighbors sorted by distance
 
-        search = K_neighbor_search(self._kd_tree, query, k, eps, search_nearest, \
+        search = K_neighbor_search(self._kd_tree, query_point, k, eps, search_nearest, \
                                    Euclidean_distance(), sort_neighbors)
 
         lst = []
@@ -50,11 +55,13 @@ class Planner(object):
         return lst
 
     def _is_collision_free(self, source, target):
-        s1 = Point_2(source[0], source[1])
-        s2 = Point_2(source[1], source[2])
+        # s1 = Point_2(source[0], source[1])
+        # s2 = Point_2(source[1], source[2])
+        s1, s2 = from_point_d(source)
 
-        t1 = Point_2(target[0], target[1])
-        t2 = Point_2(target[1], target[2])
+        # t1 = Point_2(target[0], target[1])
+        # t2 = Point_2(target[1], target[2])
+        t1, t2 = from_point_d(target)
 
         # move robot 1
         r1_start = minkowski_sum_polygon_point(self.robots[0], s1)
@@ -66,20 +73,20 @@ class Planner(object):
         r2_dest = minkowski_sum_polygon_point(self.robots[1], t2)
         r2_movement = convex_hull_2([r2_start, r2_dest])
 
-        if self.obstacles.do_intersect(r1_movement) or self.obstacles.do_intersect(r2_movement):
+        if self._polygon_set.do_intersect(r1_movement) or self._polygon_set.do_intersect(r2_movement):
             return False
 
         return not linear_path_intersection_test.do_intersect(self.robots[0], self.robots[1], [s1, s2], [t1, t2])
         
     def _is_valid_point(self, point):
-        p1 = Point_2(point[0], point[1])
-        p2 = Point_2(point[1], point[2])
+        # p1 = Point_2(point[0], point[1])
+        # p2 = Point_2(point[1], point[2])
+        p1, p2 = from_point_d(point)
 
         r1 = minkowski_sum_polygon_point(self.robots[0], p1)
         r2 = minkowski_sum_polygon_point(self.robots[1], p2)
 
-        
-        if self.obstacles.do_intersect(r1) or self.obstacles.do_intersect(r2):
+        if self._polygon_set.do_intersect(r1) or self._polygon_set.do_intersect(r2):
             return False
         
         ps = Polygon_set_2(p1)
@@ -93,28 +100,32 @@ class Planner(object):
         self._kd_tree.insert(node)  # FIXME: inefficient!
 
     def generate_path(self, n):
-        midpoint_1 = sum(self.robots[0].vertices()) / FT(self.robots[0].size())
-        midpoint_2 = sum(self.robots[1].vertices()) / FT(self.robots[1].size())
-        source = Point_d(4, [midpoint_1[0], midpoint_1[1], midpoint_2[0], midpoint_2[1]])
+        def center_point(polygon):
+            count = FT(polygon.size())
+            x = sum([p.x() for p in polygon.vertices()], FT(0))
+            y = sum([p.y() for p in polygon.vertices()], FT(0))
+            return Point_2(x / count, y / count)
+        midpoint_1 = center_point(self.robots[0])
+        midpoint_2 = center_point(self.robots[1])
+        # source = Point_d(4, [midpoint_1.x(), midpoint_1.y(), midpoint_2.x(), midpoint_2.y()])
+        source = to_point_d(midpoint_1, midpoint_2)
 
-        self._kd_tree = Kd_tree([source])
-        self._graph.add_node(source)
-
-        target = Point_d(4, self.destinations[0].extend(self.destinations[1]))
+        target = to_point_d(self.destinations[0], self.destinations[1])
 
         self.RRT(source, self.destinations, target, n)
 
         path = nx.shortest_path(self._graph, source, target)
         if len(path) > 0:
-            path = [[Point_2(p[0], p[1]), Point_2(p[2], p[3])] for p in path]
+            path = [from_point_d(p) for p in path]
+            # path = [[Point_2(p[0], p[1]), Point_2(p[2], p[3])] for p in path]
         return path
         #return [[Point_2(1, 1), Point_2(2, 2)], [Point_2(3, 5), Point_2(5, 1)]]
 
     def RRT(self, source, target, n, eta=1):
-        self._graph.clear()
+        self._kd_tree = Kd_tree([source])
         self._graph.add_node(source)
         for j in tqdm.tqdm(range(n)):
-            rand = self._get_free_sample()
+            rand = self._get_free_sample(target)
             near, _ = self._find_k_nearest_neighbors(rand, k=1)
             new = self._steer(near, rand, eta)
             if self._is_collision_free(near, new):
@@ -122,6 +133,7 @@ class Planner(object):
                 self._graph.add_edge(near, new)
 
     def RRT_star(self, source, target, n, eta):
+        raise NotImplemented
         self._graph.clear()
         self._graph.add_node(source)
 
@@ -156,26 +168,30 @@ class Planner(object):
                             self._graph.remove_edge(parent, near)
                             self._graph.add_edge(new_point, near)
 
-    def _get_free_sample(self):
+    def _get_free_sample(self, target):
         sample = None
         valid = False
         GOAL_BIAS = 5
         if np.random.randint(0, 100) <= GOAL_BIAS:
-            return Point_d(4, [self.destinations[0].x(), self.destinations[0].y(), self.destinations[1].x(), self.destinations[1].y()])
+            return target
+            # return Point_d(4, [self.destinations[0].x(), self.destinations[0].y(), self.destinations[1].x(), self.destinations[1].y()])
         while not valid:
             robot_1 = self.generate_random_point()
             robot_2 = self.generate_random_point()
             if self._is_valid_point(robot_1) and self._is_valid_point(robot_2):
                 valid = True
-                sample = Point_d(4, [robot_1.x(), robot_1.y(), robot_2.x(), robot_2.y()])
+                sample = to_point_d(robot_1, robot_2)
+                # sample = Point_d(4, [robot_1.x(), robot_1.y(), robot_2.x(), robot_2.y()])
         return sample
 
     def _steer(self, source, target, eta):
-        s1 = Point_2(source[0], source[1])
-        s2 = Point_2(source[1], source[2])
+        # s1 = Point_2(source[0], source[1])
+        # s2 = Point_2(source[1], source[2])
+        s1, s2 = from_point_d(source)
 
-        t1 = Point_2(target[0], target[1])
-        t2 = Point_2(target[1], target[2])
+        # t1 = Point_2(target[0], target[1])
+        # t2 = Point_2(target[1], target[2])
+        t1, t2 = from_point_d(target)
 
         v1 = Vector_2(s1, t1)
         v2 = Vector_2(s2, t2)
@@ -187,7 +203,8 @@ class Planner(object):
         else:
             p1 = s1 + v1 / FT(v_len * eta)
             p2 = s2 + v2 / FT(v_len * eta)
-            return Point_d(4, [p1[0], p1[1], p2[0], p2[1]])
+            return to_point_d(p1, p2)
+            # return Point_d(4, [p1.x(), p1.y(), p2.x(), p2.y()])
 
 
     def generate_random_point(self):
@@ -198,13 +215,9 @@ class Planner(object):
 
 
 
-def move_robot(prev_center, new_center, robot):
-    v = Vector_2(prev_center, new_center)
-
-
 def run_algorithm(robots, obstacles, destinations):
     planner = Planner(robots, obstacles, destinations)
-    path = planner.generate_path()
+    path = planner.generate_path(N)
     return path
 
 def generate_path(path, robots, obstacles, destination):
@@ -212,6 +225,12 @@ def generate_path(path, robots, obstacles, destination):
     out_path = run_algorithm(robots, obstacles, destination)
     for p in out_path:
         path.append(p)
+
+def to_point_d(p1: Point_2, p2: Point_2) -> Point_d:
+    return Point_d(4, [p1.x(), p1.y(), p2.x(), p2.y()])
+
+def from_point_d(p: Point_d) -> Tuple[Point_2, Point_2]:
+    return Point_2(p[0], p[1]), Point_2(p[2], p[3])
 
 ##################
 
