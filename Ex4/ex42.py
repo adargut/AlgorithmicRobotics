@@ -50,7 +50,6 @@ class Planner(object):
         return lst
 
     def _is_collision_free(self, source, target):
-        return True # FIXME: Actually check if the point is in a free space
         s1 = Point_2(source[0], source[1])
         s2 = Point_2(source[1], source[2])
 
@@ -73,7 +72,6 @@ class Planner(object):
         return not linear_path_intersection_test.do_intersect(self.robots[0], self.robots[1], [s1, s2], [t1, t2])
         
     def _is_valid_point(self, point):
-        return True  # FIXME: Actually check if the point is in a free space
         p1 = Point_2(point[0], point[1])
         p2 = Point_2(point[1], point[2])
 
