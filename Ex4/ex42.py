@@ -3,13 +3,13 @@ from typing import Tuple
 from arr2_epec_seg_ex import *
 import networkx as nx
 import math
-import random
 import numpy as np
-import linear_path_intersection_test
+from ms_polygon_segment import *
 import tqdm
 from ms_polygon_segment import minkowski_sum_polygon_point
 
 N = 100
+
 
 class Nearest(object):
     SIZE = 50
@@ -24,7 +24,8 @@ class Nearest(object):
         min_squared_dist = FT(math.inf)
         if self.buffer_size > 0:
             distance = Euclidean_distance()
-            distances = map(lambda p: (p, distance.transformed_distance(p, query_point)), self.buffer[:self.buffer_size])
+            distances = map(lambda p: (p, distance.transformed_distance(p, query_point)),
+                            self.buffer[:self.buffer_size])
             min_point, min_squared_dist = min(distances, key=lambda t: t[1])
         if self.tree.size() > 0:
             nearest_point, nearest_squared_dist = self._find_k_nearest_neighbors(query_point, k=1)
@@ -32,17 +33,16 @@ class Nearest(object):
                 return nearest_point
         return min_point
 
-    def _find_k_nearest_neighbors(self, query_point, k=5):
-        eps = FT(Gmpq(0.0))  # 0.0 for exact NN, otherwise approximate NN
+    def _find_k_nearest_neighbors(self, query_point, k=1):
+        eps = FT(Gmpq(1.0))  # 0.0 for exact NN, otherwise approximate NN
         search_nearest = True  # set this value to False in order to search farthest
         sort_neighbors = False  # set this value to True in order to obtain the neighbors sorted by distance
 
-        search = K_neighbor_search(self.tree, query_point, k, eps, search_nearest, \
-                                   Euclidean_distance(), sort_neighbors)
+        search = K_neighbor_search(self.tree, query_point, k, eps, search_nearest, Euclidean_distance(), sort_neighbors)
 
         lst = []
         search.k_neighbors(lst)
-        return lst[0]  # FIXME: does not account for edge weight atm
+        return lst[0]
 
     def add_node(self, node):
         if self.buffer_size < self.SIZE:
@@ -52,13 +52,12 @@ class Nearest(object):
             self.tree.insert(self.buffer)
             self.buffer_size = 0
 
+
 class Planner(object):
     def __init__(self, robots, obstacles, destinations):
         self.robots = list(map(Polygon_2, robots))
         self.obstacles = list(map(Polygon_2, obstacles))
         self._polygon_set = Polygon_set_2()
-        # for o in self.obstacles:
-        #     self._polygon_set.jo
         self._polygon_set.join_polygons(self.obstacles)
         self.destinations = destinations
         self._kd_tree = Kd_tree()
@@ -67,7 +66,7 @@ class Planner(object):
         self._graph = nx.DiGraph()
         self._bounds = self._compute_bounds()
         self._solution_found = False
-        self._sample_size = 200
+        self._sample_size = 50
         self._aabb = {}
 
     def _compute_bounds(self):
@@ -82,14 +81,22 @@ class Planner(object):
                 maxY = max(maxY, y)
         return [minX, maxX, minY, maxY]
 
+    def _do_intersect(self, p1, p2, source, target):
+        # fix p1 and move p2 relatively
+        ps = Polygon_set_2()
+        p1 = minkowski_sum_polygon_point(p1, source[0])
+        ps.insert(p1)
+        s = source[1]
+        t = target[1] + Vector_2(target[0], source[0])
+        if s == t:
+            ms = minkowski_sum_polygon_point(p2, s)
+        else:
+            segment = Segment_2(s, t)
+            ms = minkowski_sum_polygon_segment(p2, segment)
+        return ps.do_intersect(ms)
 
     def _is_collision_free(self, source, target):
-        # s1 = Point_2(source[0], source[1])
-        # s2 = Point_2(source[1], source[2])
         s1, s2 = from_point_d(source)
-
-        # t1 = Point_2(target[0], target[1])
-        # t2 = Point_2(target[1], target[2])
         t1, t2 = from_point_d(target)
 
         # move robot 1
@@ -127,11 +134,9 @@ class Planner(object):
             return False
 
         # Check for intersection between the robots
-        return not linear_path_intersection_test.do_intersect(self.robots[0], self.robots[1], [s1, s2], [t1, t2])
+        return not self._do_intersect(self.robots[0], self.robots[1], [s1, s2], [t1, t2])
 
     def _is_valid_point(self, point):
-        # p1 = Point_2(point[0], point[1])
-        # p2 = Point_2(point[1], point[2])
         p1, p2 = from_point_d(point)
 
         # Move r1 to point p1 and r2 to point p2
@@ -144,11 +149,7 @@ class Planner(object):
 
         # Check if robots intersect each other
         ps = Polygon_set_2(r1)
-        # Polygon_set_2.insert(r1)
         return not ps.do_intersect(r2)
-
-    # def calculate_free_space():
-    #     self._aabb_dict = {Bbox_2(obstacle.vertices()): obstacle for obstacle in self.obstacles()}
 
     def polygon_2_to_tuples_list(self, polygon):
         lst = [(p.x().to_double(), p.y().to_double()) for p in polygon.vertices()]
@@ -169,7 +170,6 @@ class Planner(object):
 
         midpoint_1 = center_point(self.robots[0])
         midpoint_2 = center_point(self.robots[1])
-        # source = Point_d(4, [midpoint_1.x(), midpoint_1.y(), midpoint_2.x(), midpoint_2.y()])
         source = to_point_d(midpoint_1, midpoint_2)
 
         target = to_point_d(self.destinations[0], self.destinations[1])
@@ -187,16 +187,30 @@ class Planner(object):
         self._kd_tree = Kd_tree()
         self._graph.add_node(source)
         self._nearest.add_node(source)
+        print("Kd-tree size:", len(self._graph.nodes))
+
         for _ in tqdm.tqdm(range(self._sample_size)):
             # Generate new samples
             sample = self._get_free_sample(target=target)
             near = self._nearest.get_nearest(sample)
             new = self._steer(near, sample, eta)
+
             if self._is_collision_free(near, new):
                 self._graph.add_node(new)
                 self._nearest.add_node(new)
                 self._graph.add_edge(near, new)
-
+            if self._is_collision_free(near, sample):
+                self._graph.add_node(sample)
+                self._nearest.add_node(sample)
+                self._graph.add_edge(near, sample)
+            # else:
+            #     # Fix two of the coordinates, move only one robot
+            #     r = random.randint(0, 1)
+            #     fixed_new = Point_d(4, [new[0], new[1], near[2], near[3]])
+            #     if self._is_collision_free(near, fixed_new):
+            #         self._graph.add_node(fixed_new)
+            #         self._nearest.add_node(fixed_new)
+            #         self._graph.add_edge(near, fixed_new)
 
     def RRT_star(self, source, target, n, eta):
         raise NotImplemented
@@ -252,12 +266,9 @@ class Planner(object):
         return sample
 
     def _steer(self, source, target, eta):
-        # s1 = Point_2(source[0], source[1])
-        # s2 = Point_2(source[1], source[2])
+
         s1, s2 = from_point_d(source)
 
-        # t1 = Point_2(target[0], target[1])
-        # t2 = Point_2(target[1], target[2])
         t1, t2 = from_point_d(target)
 
         v1 = Vector_2(s1, t1)
@@ -271,7 +282,6 @@ class Planner(object):
             p1 = s1 + v1 / v_len * FT(eta)
             p2 = s2 + v2 / v_len * FT(eta)
             return to_point_d(p1, p2)
-            # return Point_d(4, [p1.x(), p1.y(), p2.x(), p2.y()])
 
     def generate_random_point(self):
         minX, maxX, minY, maxY = self._bounds
