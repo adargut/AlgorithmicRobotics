@@ -11,6 +11,46 @@ from ms_polygon_segment import minkowski_sum_polygon_point
 
 N = 100
 
+class Nearest(object):
+    SIZE = 50
+
+    def __init__(self):
+        self.buffer = [None] * self.SIZE
+        self.buffer_size = 0
+        self.tree = Kd_tree()
+
+    def get_nearest(self, query_point):
+        min_point = None
+        min_squared_dist = FT(math.inf)
+        if self.buffer_size > 0:
+            distance = Euclidean_distance()
+            distances = map(lambda p: (p, distance.transformed_distance(p, query_point)), self.buffer[:self.buffer_size])
+            min_point, min_squared_dist = min(distances, key=lambda t: t[1])
+        if self.tree.size() > 0:
+            nearest_point, nearest_squared_dist = self._find_k_nearest_neighbors(query_point, k=1)
+            if nearest_squared_dist < min_squared_dist:
+                return nearest_point
+        return min_point
+
+    def _find_k_nearest_neighbors(self, query_point, k=5):
+        eps = FT(Gmpq(0.0))  # 0.0 for exact NN, otherwise approximate NN
+        search_nearest = True  # set this value to False in order to search farthest
+        sort_neighbors = False  # set this value to True in order to obtain the neighbors sorted by distance
+
+        search = K_neighbor_search(self.tree, query_point, k, eps, search_nearest, \
+                                   Euclidean_distance(), sort_neighbors)
+
+        lst = []
+        search.k_neighbors(lst)
+        return lst[0]  # FIXME: does not account for edge weight atm
+
+    def add_node(self, node):
+        if self.buffer_size < self.SIZE:
+            self.buffer[self.buffer_size] = node
+            self.buffer_size += 1
+        else:
+            self.tree.insert(self.buffer)
+            self.buffer_size = 0
 
 class Planner(object):
     def __init__(self, robots, obstacles, destinations):
@@ -22,12 +62,13 @@ class Planner(object):
         self._polygon_set.join_polygons(self.obstacles)
         self.destinations = destinations
         self._kd_tree = Kd_tree()
+        self._nearest = Nearest()
         self._neighbors_buffer = []
         self._graph = nx.DiGraph()
         self._bounds = self._compute_bounds()
-
+        self._solution_found = False
+        self._sample_size = 200
         self._aabb = {}
-        
 
     def _compute_bounds(self):
         minX, maxX, minY, maxY = FT(math.inf), FT(-math.inf), FT(math.inf), FT(-math.inf)
@@ -42,18 +83,6 @@ class Planner(object):
         return [minX, maxX, minY, maxY]
 
 
-    def _find_k_nearest_neighbors(self, query_point, k=5):
-        eps = FT(Gmpq(0.0))  # 0.0 for exact NN, otherwise approximate NN
-        search_nearest = True  # set this value to False in order to search farthest
-        sort_neighbors = False  # set this value to True in order to obtain the neighbors sorted by distance
-
-        search = K_neighbor_search(self._kd_tree, query_point, k, eps, search_nearest, \
-                                   Euclidean_distance(), sort_neighbors)
-
-        lst = []
-        search.k_neighbors(lst)
-        return lst
-
     def _is_collision_free(self, source, target):
         # s1 = Point_2(source[0], source[1])
         # s2 = Point_2(source[1], source[2])
@@ -66,38 +95,70 @@ class Planner(object):
         # move robot 1
         r1_start = minkowski_sum_polygon_point(self.robots[0], s1)
         r1_dest = minkowski_sum_polygon_point(self.robots[0], t1)
-        r1_movement = convex_hull_2([r1_start, r1_dest])
+        # Find convex hull of moved r1
+        r1_movement = []
+        r1_as_points = []
+        for p in self.polygon_2_to_tuples_list(r1_start.outer_boundary()):
+            r1_as_points.append(Point_2(p[0], p[1]))
+        for p in self.polygon_2_to_tuples_list(r1_dest.outer_boundary()):
+            r1_as_points.append(Point_2(p[0], p[1]))
+        # ch stores result for convex hull
+        convex_hull_2(r1_as_points, r1_movement)
 
         # move robot 2
         r2_start = minkowski_sum_polygon_point(self.robots[1], s2)
         r2_dest = minkowski_sum_polygon_point(self.robots[1], t2)
-        r2_movement = convex_hull_2([r2_start, r2_dest])
+        # Find convex hull of moved r2
+        r2_movement = []
+        r2_as_points = []
+        for p in self.polygon_2_to_tuples_list(r2_start.outer_boundary()):
+            r2_as_points.append(Point_2(p[0], p[1]))
+        for p in self.polygon_2_to_tuples_list(r2_dest.outer_boundary()):
+            r2_as_points.append(Point_2(p[0], p[1]))
+        # r2_ch stores result for convex hull
+        convex_hull_2(r2_as_points, r2_movement)
 
+        # Conversion to match C++ signature
+        r1_movement = Polygon_2(r1_movement)
+        r2_movement = Polygon_2(r2_movement)
+
+        # Check for intersection between robots and obstacles
         if self._polygon_set.do_intersect(r1_movement) or self._polygon_set.do_intersect(r2_movement):
             return False
 
+        # Check for intersection between the robots
         return not linear_path_intersection_test.do_intersect(self.robots[0], self.robots[1], [s1, s2], [t1, t2])
-        
+
     def _is_valid_point(self, point):
         # p1 = Point_2(point[0], point[1])
         # p2 = Point_2(point[1], point[2])
         p1, p2 = from_point_d(point)
 
+        # Move r1 to point p1 and r2 to point p2
         r1 = minkowski_sum_polygon_point(self.robots[0], p1)
         r2 = minkowski_sum_polygon_point(self.robots[1], p2)
 
+        # Check if robot intersect obstacles
         if self._polygon_set.do_intersect(r1) or self._polygon_set.do_intersect(r2):
             return False
-        
-        ps = Polygon_set_2(p1)
-        return not ps.do_intersect(p2)
+
+        # Check if robots intersect each other
+        ps = Polygon_set_2(r1)
+        # Polygon_set_2.insert(r1)
+        return not ps.do_intersect(r2)
 
     # def calculate_free_space():
     #     self._aabb_dict = {Bbox_2(obstacle.vertices()): obstacle for obstacle in self.obstacles()}
 
+    def polygon_2_to_tuples_list(self, polygon):
+        lst = [(p.x().to_double(), p.y().to_double()) for p in polygon.vertices()]
+        return lst
+
+    def _grow_kd_tree(self, samples):
+        self._kd_tree.insert(samples)
+
     def _add_node_to_tree(self, node):
         self._graph.add_node(node)
-        self._kd_tree.insert(node)  # FIXME: inefficient!
 
     def generate_path(self, n):
         def center_point(polygon):
@@ -105,6 +166,7 @@ class Planner(object):
             x = sum([p.x() for p in polygon.vertices()], FT(0))
             y = sum([p.y() for p in polygon.vertices()], FT(0))
             return Point_2(x / count, y / count)
+
         midpoint_1 = center_point(self.robots[0])
         midpoint_2 = center_point(self.robots[1])
         # source = Point_d(4, [midpoint_1.x(), midpoint_1.y(), midpoint_2.x(), midpoint_2.y()])
@@ -112,25 +174,29 @@ class Planner(object):
 
         target = to_point_d(self.destinations[0], self.destinations[1])
 
-        self.RRT(source, self.destinations, target, n)
+        self.RRT(source, target, n)
 
-        path = nx.shortest_path(self._graph, source, target)
-        if len(path) > 0:
-            path = [from_point_d(p) for p in path]
-            # path = [[Point_2(p[0], p[1]), Point_2(p[2], p[3])] for p in path]
-        return path
-        #return [[Point_2(1, 1), Point_2(2, 2)], [Point_2(3, 5), Point_2(5, 1)]]
+        if target in self._graph.nodes and nx.has_path(self._graph, source, target):
+            path = nx.shortest_path(self._graph, source, target)
+            if len(path) > 0:
+                path = [from_point_d(p) for p in path]
+            self._solution_found = True
+            return path
 
     def RRT(self, source, target, n, eta=1):
-        self._kd_tree = Kd_tree([source])
+        self._kd_tree = Kd_tree()
         self._graph.add_node(source)
-        for j in tqdm.tqdm(range(n)):
-            rand = self._get_free_sample(target)
-            near, _ = self._find_k_nearest_neighbors(rand, k=1)
-            new = self._steer(near, rand, eta)
+        self._nearest.add_node(source)
+        for _ in tqdm.tqdm(range(self._sample_size)):
+            # Generate new samples
+            sample = self._get_free_sample(target=target)
+            near = self._nearest.get_nearest(sample)
+            new = self._steer(near, sample, eta)
             if self._is_collision_free(near, new):
-                self._add_node_to_tree(new)
+                self._graph.add_node(new)
+                self._nearest.add_node(new)
                 self._graph.add_edge(near, new)
+
 
     def RRT_star(self, source, target, n, eta):
         raise NotImplemented
@@ -174,11 +240,12 @@ class Planner(object):
         GOAL_BIAS = 5
         if np.random.randint(0, 100) <= GOAL_BIAS:
             return target
-            # return Point_d(4, [self.destinations[0].x(), self.destinations[0].y(), self.destinations[1].x(), self.destinations[1].y()])
+
         while not valid:
             robot_1 = self.generate_random_point()
             robot_2 = self.generate_random_point()
-            if self._is_valid_point(robot_1) and self._is_valid_point(robot_2):
+            sample = to_point_d(robot_1, robot_2)
+            if self._is_valid_point(sample):
                 valid = True
                 sample = to_point_d(robot_1, robot_2)
                 # sample = Point_d(4, [robot_1.x(), robot_1.y(), robot_2.x(), robot_2.y()])
@@ -198,14 +265,13 @@ class Planner(object):
 
         v_len = FT(math.sqrt(v1.squared_length().to_double() + v2.squared_length().to_double()))
 
-        if v_len <= eta:
+        if v_len <= FT(eta):
             return target
         else:
-            p1 = s1 + v1 / FT(v_len * eta)
-            p2 = s2 + v2 / FT(v_len * eta)
+            p1 = s1 + v1 / v_len * FT(eta)
+            p2 = s2 + v2 / v_len * FT(eta)
             return to_point_d(p1, p2)
             # return Point_d(4, [p1.x(), p1.y(), p2.x(), p2.y()])
-
 
     def generate_random_point(self):
         minX, maxX, minY, maxY = self._bounds
@@ -213,12 +279,17 @@ class Planner(object):
         rand_y_coord = np.random.uniform(FT.to_double(minY), FT.to_double(maxY))
         return Point_2(rand_x_coord, rand_y_coord)
 
+    @property
+    def solution_found(self):
+        return self._solution_found
 
 
 def run_algorithm(robots, obstacles, destinations):
     planner = Planner(robots, obstacles, destinations)
-    path = planner.generate_path(N)
+    while not planner.solution_found:
+        path = planner.generate_path(N)
     return path
+
 
 def generate_path(path, robots, obstacles, destination):
     print(path, robots, obstacles, destination)
@@ -226,11 +297,14 @@ def generate_path(path, robots, obstacles, destination):
     for p in out_path:
         path.append(p)
 
+
 def to_point_d(p1: Point_2, p2: Point_2) -> Point_d:
     return Point_d(4, [p1.x(), p1.y(), p2.x(), p2.y()])
 
+
 def from_point_d(p: Point_d) -> Tuple[Point_2, Point_2]:
     return Point_2(p[0], p[1]), Point_2(p[2], p[3])
+
 
 ##################
 
