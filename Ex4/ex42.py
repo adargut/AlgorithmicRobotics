@@ -203,14 +203,6 @@ class Planner(object):
                 self._graph.add_node(sample)
                 self._nearest.add_node(sample)
                 self._graph.add_edge(near, sample)
-            # else:
-            #     # Fix two of the coordinates, move only one robot
-            #     r = random.randint(0, 1)
-            #     fixed_new = Point_d(4, [new[0], new[1], near[2], near[3]])
-            #     if self._is_collision_free(near, fixed_new):
-            #         self._graph.add_node(fixed_new)
-            #         self._nearest.add_node(fixed_new)
-            #         self._graph.add_edge(near, fixed_new)
 
     def RRT_star(self, source, target, n, eta):
         raise NotImplemented
@@ -317,28 +309,3 @@ def from_point_d(p: Point_d) -> Tuple[Point_2, Point_2]:
 
 
 ##################
-
-"""
-TODO:
-1. Use a 4 dimesnsional space for the space
-    Kd tree, Distance, etc
-2. Write a proper collision detection
-    transform 4d point to 2 2d points
-    for each check with obstacles
-    UNDER ASSUMPTION OF SIMULTANEOUS MOVEMENT AND FIXED SPEED
-    check if paths collide with each other
-3. NEAR = get nearest neighbors in that radius!
-4. Cost(v) = Cost(Parent(v)) + c(Line(Parent(v), v)). Cost(root) = 0
-
-
-
-Collision Detection:
-For every polygon, compute AABB
-Each face will have a different "name"
-Put into arrangement A
-Overlay - Free space will have no name
-        Intersection witn n AABBs will have n "names"
-
-Use point location on the arrangement A to check where the point is with which Boxes to compute intersection!
-
-"""
