@@ -307,5 +307,4 @@ def to_point_d(p1: Point_2, p2: Point_2) -> Point_d:
 def from_point_d(p: Point_d) -> Tuple[Point_2, Point_2]:
     return Point_2(p[0], p[1]), Point_2(p[2], p[3])
 
-
 ##################
