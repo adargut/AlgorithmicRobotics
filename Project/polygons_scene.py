@@ -5,6 +5,7 @@ from gui.gui import GUI, QtCore, QtGui, QtWidgets, Qt, QPointF
 import read_input
 from conversions import point_2_to_xy, tuples_list_to_polygon_2, polygon_2_to_tuples_list
 import ms_polygon_segment, linear_path_intersection_test
+import matplotlib.pyplot as plt
 
 offset = -Vector_2(FT(0.5), FT(0.5))
 
@@ -21,7 +22,7 @@ class Polygons_scene():
 
     def draw_scene(self):
         gui.clear_scene()
-        colors = [Qt.yellow, Qt.green]
+        colors = [Qt.darkGreen, Qt.darkRed]
         for i in range(len(self.robots)):
             if (self.robots[i] != None):
                 self.gui_robots[i] = gui.add_polygon([point_2_to_xy(p) for p in self.robots[i]], colors[i])
@@ -208,6 +209,8 @@ def set_destinations():
     destinations[0] = Point_2(FT(Gmpq(s0[0])), FT(Gmpq(s0[1])))
     destinations[1] = Point_2(FT(Gmpq(s1[0])), FT(Gmpq(s1[1])))
     ps.set_destinations(destinations)
+    print("destination is:", destinations[0], type(destinations[0]))
+    destinations[0] = Point_2(10, 10)
 
 
 def animate_path():
@@ -222,7 +225,7 @@ if __name__ == "__main__":
     ps = Polygons_scene()
     gui.set_program_name("Multi-robot Motion Planning")
     gui.set_field(0, "scene0")
-    gui.set_field(3, "ex42")
+    gui.set_field(3, "project")
     gui.set_field(4, "path0.txt")
     # gui.set_field(5, "path_out.txt")
     gui.set_logic(0, set_up_scene)
