@@ -33,6 +33,8 @@ class Polygons_scene():
             if (self.destinations[i] != None):
                 self.gui_destinations[i] = gui.add_disc(0.05, *point_2_to_xy(self.destinations[i]), colors[i])
 
+        self.gui_robots[0].polygon.setZValue(2)
+
     def load_scene(self, filename):
         scene = read_input.read_polygon_scene(filename)
         # gui.set_field(2, " ".join(scene[0]))
