@@ -34,7 +34,7 @@ class Utils:
         Sample pseudorandom radius for a circle
         """
 
-        return np.random.uniform(low=0.02, high=0.04)
+        return np.random.uniform(low=0.02, high=0.03)
 
     @staticmethod
     def generate_image(zoom, h, w):
@@ -199,14 +199,13 @@ class Robot:
         self.target = dst  # current target
         self.max_speed = max_speed  # max speed of robot
         self.max_acc = max_acc  # maximum acceleration of robot
-        self.clearance = clearance  # clearance from obstacles
         self.left_vel = 0.0  # left velocity
         self.right_vel = 0.0  # right velocity
         self.predict_time = 1.0  # time step of trajectory prediction
         self.epsilon = 0.01  # precision required
         self.step_time = 0.45  # size of step in motion prediction
         self.gain_weight = 16  # use weights for gain
-        self.loss_weight = 19.5  # use weights for loss
+        self.loss_weight = 18.5  # use weights for loss
         self.scene = scene  # scene of the robot
 
     def _speed_limit(self, speed):
@@ -224,11 +223,12 @@ class Robot:
         delta1 = left_speed + right_speed
         delta2 = left_speed - right_speed
 
-        if np.abs(delta1) < self.epsilon / 10000:
+        # compute kinematics assuming constant acceleration
+        if np.abs(delta1) < self.epsilon / 10 ** 3:
             next_theta = theta + (right_speed - left_speed) * dt / (self.r * 2)
             next_x = src[0]
             next_y = src[1]
-        elif np.abs(delta2) < self.epsilon / 10000:
+        elif np.abs(delta2) < self.epsilon / 10 ** 3:
             next_theta = theta
             next_x = src[0] + left_speed * dt * np.cos(theta)
             next_y = src[1] + right_speed * dt * np.sin(theta)
@@ -326,8 +326,10 @@ def run_algorithm():
 
     # parameters for program, hardcoded for now
     w, h, eps, size, zoom = 1.2, 1.2, 0.1, 225, 550
-    target = np.array([1.0, 1.0])
-    source = np.array([0.8, 0.2])
+    x, y = 1.0, 1.0
+    target = np.array([x, y])
+    x, y = np.random.uniform(low=0.1, high=1.2), np.random.uniform(low=0.1, high=0.8)
+    source = np.array([x, y])
 
     scene = Scene.build_scene(size, source, target, zoom, w, h, eps)
     robot = Robot(source, target, scene)
@@ -340,11 +342,16 @@ def main():
     """
     Execute program
     """
+    res = []
 
-    begin = time.time()
-    run_algorithm()
-    end = time.time()
-    print("Target was caught in approximately", int(end - begin), "seconds")
+    for _ in range(20):
+        begin = time.time()
+        run_algorithm()
+        end = time.time()
+        print("Target was caught in", end - begin, "seconds")
+        res.append(end - begin)
+
+    print("Distribution in 20 samples:", res)
 
 
 if __name__ == '__main__':
