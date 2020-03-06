@@ -34,7 +34,7 @@ class Utils:
         Sample pseudorandom radius for a circle
         """
 
-        return np.random.uniform(low=0.02, high=0.03)
+        return np.random.uniform(low=0.02, high=0.04)
 
     @staticmethod
     def generate_image(zoom, h, w):
@@ -107,11 +107,11 @@ class Scene:
 
         global N
 
-        if self.target[0] < 0.1 or self.target[0] > 1.98:
+        if self.target[0] < 0.1 or self.target[0] > 1.1:
             N *= -1
 
-        self.target[0] += N * 0.0005
-        self.target[1] += N * 0.0005
+        self.target[0] += N * 0.002
+        self.target[1] += N * 0.002
 
     def _is_free_obstacle(self, obstacle):
         """
@@ -119,7 +119,7 @@ class Scene:
         """
 
         obst_coords = Obstacle.obs_to_tuple(obstacle)
-        delta = obstacle.r + 0.01
+        delta = obstacle.r + 0.03
 
         for prev_obstacle in self.obstacles:
             if prev_obstacle:
@@ -158,13 +158,13 @@ class Scene:
 
         assert isinstance(robot, Robot)  # input validity
 
-        colors = [(100, 0, 0), (255, 15, 0), (0, 255, 0)]
+        colors = [(100, 0, 0), (255, 15, 0), (0, 255, 0), (255, 255, 255)]
         radius = int(R * self.zoom)
 
         cv2.rectangle(1, (1, 1),
                       (1, 1),
                       colors[0], 3)
-        self.img[:] = (255, 255, 255)
+        self.img[:] = colors[3]
 
         x, y = robot.pos
         c1 = (int(x * self.zoom), int((self.height - y) * self.zoom))
@@ -187,7 +187,7 @@ class Scene:
 
 class Robot:
 
-    def __init__(self, src, dst, scene, max_speed=0.02, max_acc=0.02, r=0.01, clearance=0.3):
+    def __init__(self, src, dst, scene, max_speed=0.012, max_acc=0.025, r=0.01, clearance=0.3):
         """
         Parameters of the robot
         """
@@ -204,9 +204,9 @@ class Robot:
         self.right_vel = 0.0  # right velocity
         self.predict_time = 1.0  # time step of trajectory prediction
         self.epsilon = 0.01  # precision required
-        self.step_time = 0.2  # size of step in motion prediction
-        self.gain_weight = 15.5  # use weights for gain
-        self.loss_weight = 18.5  # use weights for loss
+        self.step_time = 0.45  # size of step in motion prediction
+        self.gain_weight = 16  # use weights for gain
+        self.loss_weight = 19.5  # use weights for loss
         self.scene = scene  # scene of the robot
 
     def _speed_limit(self, speed):
@@ -259,10 +259,13 @@ class Robot:
         We wish to minimize this loss in order to avoid crashing into obstacles
         """
 
-        closest = min([Utils.dist(new_pos, Obstacle.obs_to_tuple(x)) -
-                       self.r - x.r for x in self.scene.obstacles])
+        def _loss(p):
+            return min([Utils.dist(p, Obstacle.obs_to_tuple(x)) -
+                        self.r - x.r for x in self.scene.obstacles])
 
-        return max(self.clearance - closest, 0)
+        closest1, closest2 = _loss(self.pos), _loss(new_pos)
+
+        return max(closest1 - closest2, 0)
 
     def solution_found(self):
         """
@@ -322,7 +325,7 @@ def run_algorithm():
     """
 
     # parameters for program, hardcoded for now
-    w, h, eps, size, zoom = 1.2, 1.2, 0.1, 200, 550
+    w, h, eps, size, zoom = 1.2, 1.2, 0.1, 225, 550
     target = np.array([1.0, 1.0])
     source = np.array([0.8, 0.2])
 
